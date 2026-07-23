@@ -46,7 +46,7 @@ cronApp.get("/morning", async (c) => {
     const recentLogs = await getRecentLogs(3);
     const hp = await resolveCurrentHp(recentLogs);
 
-    const prompt = buildMorningPrompt(profile, patterns, recentLogs, hp);
+    const prompt = await buildMorningPrompt(profile, patterns, recentLogs, hp);
     const morningMsg = await generateMessage(
       prompt,
       process.env.GEMINI_MODEL_MORNING || "gemini-3.1-flash-lite"
@@ -72,7 +72,7 @@ cronApp.get("/evening", async (c) => {
     const today = getTodayDateString();
     const todayLog = await readDailyLog(today);
 
-    const prompt = buildEveningPrompt(profile, patterns, todayLog);
+    const prompt = await buildEveningPrompt(profile, patterns, todayLog);
     const eveningMsg = await generateMessage(
       prompt,
       process.env.GEMINI_MODEL_EVENING || "gemini-3.1-flash-lite"

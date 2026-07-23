@@ -39,6 +39,27 @@ export async function readPatterns(): Promise<string> {
 	}
 }
 
+export async function readPromptTemplate(
+	type: "morning" | "evening",
+): Promise<string> {
+	const filename = `prompt_${type}.md`;
+	const sampleFilename = `prompt_${type}.sample.md`;
+
+	try {
+		const filePath = path.join(MEMORY_DIR, filename);
+		return await fs.readFile(filePath, "utf-8");
+	} catch {
+		try {
+			const samplePath = path.join(MEMORY_DIR, sampleFilename);
+			return await fs.readFile(samplePath, "utf-8");
+		} catch {
+			return type === "morning"
+				? "朝のメッセージを生成してください。"
+				: "夜のメッセージを生成してください。";
+		}
+	}
+}
+
 export function getTodayDateString(): string {
 	const now = new Date();
 	const year = now.getFullYear();
