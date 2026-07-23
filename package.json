@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "LINE Companion Bot lowering the standard for a 100-point day",
   "main": "src/index.ts",
+  "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
