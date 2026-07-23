@@ -142,6 +142,20 @@ export async function resolveCurrentHp(recentLogs: string[]): Promise<number> {
 	return 3;
 }
 
+export async function appendPlannedTask(dateStr: string, taskText: string) {
+	let content = await readDailyLog(dateStr);
+
+	const taskLine = `- [ ] ${taskText.trim()}\n`;
+
+	if (content.includes("## Planned Tasks")) {
+		content = content.replace("## Planned Tasks\n", `## Planned Tasks\n${taskLine}`);
+	} else {
+		content += `\n## Planned Tasks\n${taskLine}`;
+	}
+
+	await saveDailyLog(dateStr, content);
+}
+
 export async function appendRawUserLog(dateStr: string, text: string) {
 	let content = await readDailyLog(dateStr);
 
@@ -150,6 +164,15 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 		minute: "2-digit",
 		hour12: false,
 	});
+
+	// 「タスク:」または「タスク：」で始まるか判定（全角・半角スペース両対応）
+	const taskMatch = text.match(/^タスク[:：]\s*(.+)$/s);
+
+	if (taskMatch?.[1]) {
+		const taskBody = taskMatch[1].trim();
+		await appendPlannedTask(dateStr, taskBody);
+	}
+
 	const logLine = `- ${timeStr} USER: ${text.replace(/\n/g, " ")}\n`;
 
 	if (content.includes("## Raw Logs")) {
