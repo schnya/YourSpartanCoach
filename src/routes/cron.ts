@@ -1,6 +1,11 @@
 import { messagingApi } from "@line/bot-sdk";
 import { Hono } from "hono";
-import { buildEveningPrompt, buildMorningPrompt } from "../services/contextBuilder.js";
+import {
+  buildAccountabilityPrompt,
+  buildEveningPrompt,
+  buildMorningPrompt,
+  buildTaskPlanningPrompt,
+} from "../services/contextBuilder.js";
 import { generateMessage } from "../services/llm.js";
 import {
   appendSentMessage,
@@ -13,6 +18,18 @@ import {
 } from "../services/memoryStore.js";
 
 const cronApp = new Hono();
+
+// オプションの CRON_SECRET 認証ミドルウェア
+cronApp.use("*", async (c, next) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const authHeader = c.req.header("Authorization");
+    if (authHeader !== `Bearer ${secret}`) {
+      return c.text("Unauthorized", 401);
+    }
+  }
+  await next();
+});
 
 async function sendPushMessage(text: string) {
   const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -85,6 +102,67 @@ cronApp.get("/evening", async (c) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[Cron Evening Error]:", message);
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// タスクプランニング (/cron/task-plan)
+cronApp.get("/task-plan", async (c) => {
+  try {
+    const profile = await readUserProfile();
+    const patterns = await readPatterns();
+    const today = getTodayDateString();
+    const todayLog = await readDailyLog(today);
+    const recentLogs = await getRecentLogs(3);
+    const hp = await resolveCurrentHp(recentLogs);
+
+    const prompt = await buildTaskPlanningPrompt(profile, patterns, todayLog, "指定なし", hp);
+    const planMsg = await generateMessage(
+      prompt,
+      process.env.GEMINI_MODEL_TASK_PLAN || "gemini-3.1-flash-lite"
+    );
+
+    await appendSentMessage(today, "Evening", `[Task Plan]\n${planMsg}`);
+    await sendPushMessage(planMsg);
+
+    return c.json({ success: true, type: "task-plan", message: planMsg });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[Cron Task Plan Error]:", message);
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// アカウンタビリティチェック (/cron/accountability)
+cronApp.get("/accountability", async (c) => {
+  try {
+    const profile = await readUserProfile();
+    const patterns = await readPatterns();
+    const today = getTodayDateString();
+    const todayLog = await readDailyLog(today);
+    const recentLogs = await getRecentLogs(3);
+    const hp = await resolveCurrentHp(recentLogs);
+
+    const prompt = await buildAccountabilityPrompt(
+      profile,
+      patterns,
+      "",
+      todayLog,
+      todayLog,
+      hp
+    );
+    const accountabilityMsg = await generateMessage(
+      prompt,
+      process.env.GEMINI_MODEL_ACCOUNTABILITY || "gemini-3.1-flash-lite"
+    );
+
+    await appendSentMessage(today, "Evening", `[Accountability]\n${accountabilityMsg}`);
+    await sendPushMessage(accountabilityMsg);
+
+    return c.json({ success: true, type: "accountability", message: accountabilityMsg });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[Cron Accountability Error]:", message);
     return c.json({ success: false, error: message }, 500);
   }
 });

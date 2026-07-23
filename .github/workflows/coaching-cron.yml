@@ -1,0 +1,31 @@
+name: Coaching Accountability Cron
+
+on:
+  schedule:
+    # 40分おきトリガー (GitHub Actions Cron)
+    - cron: '*/40 * * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger-coaching:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check current time (JST) and trigger accountability cron
+        run: |
+          # JST時間の取得 (UTC + 9時間)
+          JST_HOUR=$(TZ=Asia/Tokyo date +%H)
+          echo "Current JST Hour: $JST_HOUR"
+          
+          # 10:00 〜 21:30 の範囲内かチェック (10時〜21時)
+          if [ "$JST_HOUR" -ge 10 ] && [ "$JST_HOUR" -le 21 ]; then
+            echo "Within coaching time window (10:00 - 21:30 JST). Triggering endpoint..."
+            
+            HEADERS=()
+            if [ -n "${{ secrets.CRON_SECRET }}" ]; then
+              HEADERS=(-H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+            fi
+            
+            curl -X GET "${{ secrets.APP_URL }}/cron/accountability" "${HEADERS[@]}"
+          else
+            echo "Outside coaching hours. Skipping trigger."
+          fi

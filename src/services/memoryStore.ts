@@ -50,7 +50,7 @@ export async function readPatterns(): Promise<string> {
 }
 
 export async function readPromptTemplate(
-	type: "morning" | "evening",
+	type: "morning" | "evening" | "accountability" | "task_planning",
 ): Promise<string> {
 	const filename = `prompt_${type}.md`;
 	const sampleFilename = `prompt_${type}.sample.md`;
@@ -63,9 +63,10 @@ export async function readPromptTemplate(
 			const samplePath = path.join(MEMORY_DIR, sampleFilename);
 			return await fs.readFile(samplePath, "utf-8");
 		} catch {
-			return type === "morning"
-				? "朝のメッセージを生成してください。"
-				: "夜のメッセージを生成してください。";
+			if (type === "morning") return "朝のメッセージを生成してください。";
+			if (type === "evening") return "夜のメッセージを生成してください。";
+			if (type === "accountability") return "目標と実際の行動の差分を分析してください。";
+			return "タスクの優先順位を整理してください。";
 		}
 	}
 }

@@ -17,6 +17,14 @@
       "schedule": "0 23 * * *"
     },
     {
+      "path": "/cron/task-plan",
+      "schedule": "30 0 * * *"
+    },
+    {
+      "path": "/cron/accountability",
+      "schedule": "0 11 * * *"
+    },
+    {
       "path": "/cron/evening",
       "schedule": "30 12 * * *"
     }
