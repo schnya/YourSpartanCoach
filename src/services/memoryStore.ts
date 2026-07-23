@@ -174,20 +174,20 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 		hour12: false,
 	});
 
-	// 「タスク:」または「タスク：」で始まるか判定（全角・半角スペース両対応）
-	const taskMatch = text.match(/^タスク[:：]\s*(.+)$/s);
+	const isTaskCommand = /^タスク[:：]/i.test(text.trim());
+	const isCompleteCommand = /^(?:完了|done)[:：\s]/i.test(text.trim());
 
+	// 「タスク:」で始まる場合は ## Planned Tasks に追加
+	const taskMatch = text.match(/^タスク[:：]\s*(.+)$/s);
 	if (taskMatch?.[1]) {
 		const taskBody = taskMatch[1].trim();
-		await appendPlannedTask(dateStr, taskBody);
-	}
+		const taskLine = `- [ ] ${taskBody}\n`;
 
-	const logLine = `- ${timeStr} USER: ${text.replace(/\n/g, " ")}\n`;
-
-	if (content.includes("## Raw Logs")) {
-		content = content.replace("## Raw Logs\n", `## Raw Logs\n${logLine}`);
-	} else {
-		content += `\n## Raw Logs\n${logLine}`;
+		if (content.includes("## Planned Tasks")) {
+			content = content.replace("## Planned Tasks\n", `## Planned Tasks\n${taskLine}`);
+		} else {
+			content += `\n## Planned Tasks\n${taskLine}`;
+		}
 	}
 
 	// HP指定を含む発言があった場合、Statusも更新
@@ -196,6 +196,17 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 		const newHp = hpMatch[1];
 		if (content.includes("HP:")) {
 			content = content.replace(/HP:\s*\d/, `HP: ${newHp}`);
+		}
+	}
+
+	// タスク追加コマンド・タスク完了コマンドの場合は ## Raw Logs に重複して記録しない
+	if (!isTaskCommand && !isCompleteCommand) {
+		const logLine = `- ${timeStr} USER: ${text.replace(/\n/g, " ")}\n`;
+
+		if (content.includes("## Raw Logs")) {
+			content = content.replace("## Raw Logs\n", `## Raw Logs\n${logLine}`);
+		} else {
+			content += `\n## Raw Logs\n${logLine}`;
 		}
 	}
 
