@@ -1,0 +1,23 @@
+{
+  "name": "line-companion-bot",
+  "version": "1.0.0",
+  "description": "LINE Companion Bot lowering the standard for a 100-point day",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.13.0",
+    "@hono/node-server": "^2.0.11",
+    "@line/bot-sdk": "^9.5.0",
+    "dotenv": "^16.4.7",
+    "hono": "^4.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

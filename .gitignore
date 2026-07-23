@@ -1,0 +1,26 @@
+# Node dependencies
+node_modules/
+.pnpm-store/
+
+# Build & Vercel
+dist/
+.vercel/
+
+# Environment variables & secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+
+# Private User Profile & Daily Logs (CRITICAL)
+memory/USER_PROFILE.md
+!memory/USER_PROFILE.sample.md
+memory/daily/*.md
+!memory/daily/sample.md
+
+# Obsidian & Local Metadata
+.obsidian/
+test-models.ts
+
+# OS files
+.DS_Store
+Thumbs.db
