@@ -9,6 +9,7 @@ import {
 import { generateMessage } from "../services/llm.js";
 import {
   appendSentMessage,
+  carryOverPendingTasks,
   getRecentLogs,
   getTodayDateString,
   readDailyLog,
@@ -58,6 +59,26 @@ async function sendPushMessage(text: string) {
 // 朝の Cron (/cron/morning)
 cronApp.get("/morning", async (c) => {
   try {
+    const today = getTodayDateString();
+
+    // 前日（1日前）の日付を算出
+    const now = new Date();
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setDate(now.getDate() - 1);
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const yesterday = formatter.format(yesterdayDate);
+
+    // 前日の未完了タスクを当日にキャリーオーバー
+    const carriedCount = await carryOverPendingTasks(yesterday, today);
+    if (carriedCount > 0) {
+      console.log(`[Task Carry-over]: Carried ${carriedCount} pending tasks from ${yesterday} to ${today}`);
+    }
+
     const profile = await readUserProfile();
     const patterns = await readPatterns();
     const recentLogs = await getRecentLogs(3);
@@ -69,11 +90,10 @@ cronApp.get("/morning", async (c) => {
       process.env.GEMINI_MODEL_MORNING || "gemini-3.1-flash-lite"
     );
 
-    const today = getTodayDateString();
     await appendSentMessage(today, "Morning", morningMsg);
     await sendPushMessage(morningMsg);
 
-    return c.json({ success: true, type: "morning", message: morningMsg });
+    return c.json({ success: true, type: "morning", message: morningMsg, carriedTasks: carriedCount });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[Cron Morning Error]:", message);

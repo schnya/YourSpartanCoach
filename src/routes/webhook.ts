@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
 	appendRawUserLog,
 	getTodayDateString,
+	markTaskAsCompleted,
 } from "../services/memoryStore.js";
 
 const webhookApp = new Hono();
@@ -46,19 +47,35 @@ webhookApp.post("/", async (c) => {
 		if (body && Array.isArray(body.events)) {
 			for (const event of body.events) {
 				if (event.type === "message" && event.message.type === "text") {
-					const text = event.message.text;
+					const text = event.message.text.trim();
 					const replyToken = event.replyToken;
 					console.log(`[Webhook Message Received]: ${text}`);
 
 					// 生ログ / タスクを記録
 					await appendRawUserLog(today, text);
 
-					// LINEへの定型返信
+					// LINEへの返信ロジック
 					if (client && replyToken) {
-						const isTask = /^タスク[:：]/i.test(text.trim());
-						const replyText = isTask
-							? "メモったで！タスクに追加しておいたよ📝"
-							: "了解！ログに記録しておいたで👍";
+						let replyText = "了解！ログに記録しておいたで👍";
+
+						const isTaskCommand = /^タスク[:：]\s*(.+)$/i.exec(text);
+						const isCompleteCommand = /^(?:完了|done)[:：\s]*(.+)$/i.exec(text);
+
+						if (isTaskCommand) {
+							replyText = "メモったで！タスクに追加しておいたよ📝";
+						} else if (isCompleteCommand?.[1]) {
+							const query = isCompleteCommand[1].trim();
+							const result = await markTaskAsCompleted(today, query);
+
+							if (result.status === "success") {
+								replyText = `「${result.taskText}」を完了にしたで！ナイス👍🎉`;
+							} else if (result.status === "multiple") {
+								const options = result.matches.map((m) => `・${m}`).join("\n");
+								replyText = `どれを完了にする？複数見つかったで：\n${options}`;
+							} else {
+								replyText = `「${query}」に一致する未完了タスクは見つからなかったで🤔`;
+							}
+						}
 
 						try {
 							await client.replyMessage({
@@ -71,7 +88,7 @@ webhookApp.post("/", async (c) => {
 							console.error("[LINE Reply Error Detail]: Failed to replyMessage:", detail);
 						}
 					} else {
-						console.warn("[LINE Reply Warning]: Reply skipped. client is null (LINE_CHANNEL_ACCESS_TOKEN missing?) or replyToken missing.");
+						console.warn("[LINE Reply Warning]: Reply skipped. client is null or replyToken missing.");
 					}
 				}
 			}

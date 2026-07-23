@@ -202,6 +202,110 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 	await saveDailyLog(dateStr, content);
 }
 
+export async function carryOverPendingTasks(yesterdayDateStr: string, todayDateStr: string): Promise<number> {
+	const yesterdayLog = await readDailyLog(yesterdayDateStr);
+	if (!yesterdayLog.includes("## Planned Tasks")) {
+		return 0;
+	}
+
+	// 前日の ## Planned Tasks セクションから未完了タスク（- [ ] ）を抽出
+	const tasksSectionMatch = yesterdayLog.match(/## Planned Tasks\n([\s\S]*?)(?=\n## |$)/);
+	if (!tasksSectionMatch?.[1]) {
+		return 0;
+	}
+
+	const lines = tasksSectionMatch[1].split("\n");
+	const pendingTasks: string[] = [];
+
+	for (const line of lines) {
+		const match = line.match(/^-\s*\[\s*\]\s*(.+)$/);
+		if (match?.[1]) {
+			// (carried) の重複付与を防止しつつクリーンなタスク名を取り出す
+			const cleanTaskName = match[1].replace(/\s*\(carried\)$/i, "").trim();
+			pendingTasks.push(cleanTaskName);
+		}
+	}
+
+	if (pendingTasks.length === 0) {
+		return 0;
+	}
+
+	let todayLog = await readDailyLog(todayDateStr);
+	let carriedCount = 0;
+
+	for (const taskName of pendingTasks) {
+		// 当日ログに既に同名のタスクが存在するかチェック
+		if (!todayLog.includes(taskName)) {
+			const carriedTaskLine = `- [ ] ${taskName} (carried)\n`;
+			if (todayLog.includes("## Planned Tasks")) {
+				todayLog = todayLog.replace("## Planned Tasks\n", `## Planned Tasks\n${carriedTaskLine}`);
+			} else {
+				todayLog += `\n## Planned Tasks\n${carriedTaskLine}`;
+			}
+			carriedCount++;
+		}
+	}
+
+	if (carriedCount > 0) {
+		await saveDailyLog(todayDateStr, todayLog);
+	}
+
+	return carriedCount;
+}
+
+export type CompleteTaskResult =
+	| { status: "success"; taskText: string }
+	| { status: "not_found" }
+	| { status: "multiple"; matches: string[] };
+
+export async function markTaskAsCompleted(
+	todayDateStr: string,
+	queryText: string
+): Promise<CompleteTaskResult> {
+	const todayLog = await readDailyLog(todayDateStr);
+	if (!todayLog.includes("## Planned Tasks")) {
+		return { status: "not_found" };
+	}
+
+	const tasksSectionMatch = todayLog.match(/## Planned Tasks\n([\s\S]*?)(?=\n## |$)/);
+	if (!tasksSectionMatch?.[1]) {
+		return { status: "not_found" };
+	}
+
+	const lines = tasksSectionMatch[1].split("\n");
+	const matchingTasks: string[] = [];
+
+	const cleanQuery = queryText.trim().toLowerCase();
+
+	for (const line of lines) {
+		const match = line.match(/^-\s*\[\s*\]\s*(.+)$/);
+		if (match?.[1]) {
+			const taskText = match[1].trim();
+			if (taskText.toLowerCase().includes(cleanQuery)) {
+				matchingTasks.push(taskText);
+			}
+		}
+	}
+
+	if (matchingTasks.length === 0) {
+		return { status: "not_found" };
+	}
+
+	if (matchingTasks.length > 1) {
+		return { status: "multiple", matches: matchingTasks };
+	}
+
+	const targetTask = matchingTasks[0];
+	// 対象の - [ ] タスクを - [x] タスクに置換
+	const updatedLog = todayLog.replace(
+		new RegExp(`-\\s*\\[\\s*\\]\\s*${targetTask.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+		`- [x] ${targetTask}`
+	);
+
+	await saveDailyLog(todayDateStr, updatedLog);
+	return { status: "success", taskText: targetTask };
+}
+
 export async function appendSentMessage(
 	dateStr: string,
 	type: "Morning" | "Evening",
