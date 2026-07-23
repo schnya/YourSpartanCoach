@@ -1,12 +1,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Redis } from "@upstash/redis";
 
 const MEMORY_DIR = path.resolve(process.cwd(), "memory");
-// Vercel などのサーバーレス環境では /tmp のみ書き込み可能
 const IS_VERCEL = !!process.env.VERCEL;
 const DAILY_DIR = IS_VERCEL
   ? path.resolve("/tmp", "daily")
   : path.resolve(MEMORY_DIR, "daily");
+
+// Upstash Redis クライアントの動的初期化
+function getRedisClient(): Redis | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token && url !== "your_upstash_redis_rest_url_here") {
+    return new Redis({ url, token });
+  }
+  return null;
+}
 
 export async function ensureDirectoryExists(dirPath: string) {
 	try {
@@ -69,6 +79,16 @@ export function getTodayDateString(): string {
 }
 
 export async function readDailyLog(dateStr: string): Promise<string> {
+	const redis = getRedisClient();
+	if (redis) {
+		try {
+			const data = await redis.get<string>(`daily:${dateStr}`);
+			if (data) return data;
+		} catch (err: unknown) {
+			console.error("[Redis Read Error]:", err);
+		}
+	}
+
 	try {
 		const filePath = path.join(DAILY_DIR, `${dateStr}.md`);
 		return await fs.readFile(filePath, "utf-8");
@@ -77,8 +97,26 @@ export async function readDailyLog(dateStr: string): Promise<string> {
 	}
 }
 
+export async function saveDailyLog(dateStr: string, content: string): Promise<void> {
+	const redis = getRedisClient();
+	if (redis) {
+		try {
+			await redis.set(`daily:${dateStr}`, content);
+		} catch (err: unknown) {
+			console.error("[Redis Write Error]:", err);
+		}
+	}
+
+	try {
+		await ensureDirectoryExists(DAILY_DIR);
+		const filePath = path.join(DAILY_DIR, `${dateStr}.md`);
+		await fs.writeFile(filePath, content, "utf-8");
+	} catch (_err) {
+		// Ignore local write errors in Vercel if Redis succeeds
+	}
+}
+
 export async function getRecentLogs(days: number = 3): Promise<string[]> {
-	await ensureDirectoryExists(DAILY_DIR);
 	const logs: string[] = [];
 	const now = new Date();
 
@@ -104,8 +142,6 @@ export async function resolveCurrentHp(recentLogs: string[]): Promise<number> {
 }
 
 export async function appendRawUserLog(dateStr: string, text: string) {
-	await ensureDirectoryExists(DAILY_DIR);
-	const filePath = path.join(DAILY_DIR, `${dateStr}.md`);
 	let content = await readDailyLog(dateStr);
 
 	const timeStr = new Date().toLocaleTimeString("ja-JP", {
@@ -121,7 +157,7 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 		content += `\n## Raw Logs\n${logLine}`;
 	}
 
-	// HP指定を含む発言（例：「HP: 2」や「HP2」）があった場合、Statusも更新
+	// HP指定を含む発言があった場合、Statusも更新
 	const hpMatch = text.match(/HP[:：\s]*([1-5])/i);
 	if (hpMatch?.[1]) {
 		const newHp = hpMatch[1];
@@ -130,7 +166,7 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 		}
 	}
 
-	await fs.writeFile(filePath, content, "utf-8");
+	await saveDailyLog(dateStr, content);
 }
 
 export async function appendSentMessage(
@@ -138,8 +174,6 @@ export async function appendSentMessage(
 	type: "Morning" | "Evening",
 	text: string,
 ) {
-	await ensureDirectoryExists(DAILY_DIR);
-	const filePath = path.join(DAILY_DIR, `${dateStr}.md`);
 	let content = await readDailyLog(dateStr);
 
 	const timeStr = new Date().toLocaleTimeString("ja-JP", {
@@ -160,5 +194,5 @@ export async function appendSentMessage(
 		content += `\n${sectionHeader}\n${sentLine}`;
 	}
 
-	await fs.writeFile(filePath, content, "utf-8");
+	await saveDailyLog(dateStr, content);
 }
