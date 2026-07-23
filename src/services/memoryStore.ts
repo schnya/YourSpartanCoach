@@ -72,11 +72,13 @@ export async function readPromptTemplate(
 }
 
 export function getTodayDateString(): string {
-	const now = new Date();
-	const year = now.getFullYear();
-	const month = String(now.getMonth() + 1).padStart(2, "0");
-	const day = String(now.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
+	const formatter = new Intl.DateTimeFormat("en-CA", {
+		timeZone: "Asia/Tokyo",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	});
+	return formatter.format(new Date());
 }
 
 export async function readDailyLog(dateStr: string): Promise<string> {
@@ -124,7 +126,13 @@ export async function getRecentLogs(days: number = 3): Promise<string[]> {
 	for (let i = 0; i < days; i++) {
 		const targetDate = new Date(now);
 		targetDate.setDate(now.getDate() - i);
-		const dateStr = targetDate.toISOString().split("T")[0];
+		const formatter = new Intl.DateTimeFormat("en-CA", {
+			timeZone: "Asia/Tokyo",
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+		});
+		const dateStr = formatter.format(targetDate);
 		const log = await readDailyLog(dateStr);
 		logs.push(log);
 	}
@@ -160,6 +168,7 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 	let content = await readDailyLog(dateStr);
 
 	const timeStr = new Date().toLocaleTimeString("ja-JP", {
+		timeZone: "Asia/Tokyo",
 		hour: "2-digit",
 		minute: "2-digit",
 		hour12: false,
@@ -201,6 +210,7 @@ export async function appendSentMessage(
 	let content = await readDailyLog(dateStr);
 
 	const timeStr = new Date().toLocaleTimeString("ja-JP", {
+		timeZone: "Asia/Tokyo",
 		hour: "2-digit",
 		minute: "2-digit",
 		hour12: false,
