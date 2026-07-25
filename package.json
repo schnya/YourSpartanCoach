@@ -5,13 +5,11 @@
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "dev": "deno task dev",
+    "start": "deno task start"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
-    "@hono/node-server": "^2.0.11",
     "@line/bot-sdk": "^9.5.0",
     "@upstash/redis": "^1.38.0",
     "dotenv": "^16.4.7",

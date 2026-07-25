@@ -2,7 +2,7 @@
 
 LINE Messaging API と Google Gemini API を統合し、ユーザーのエネルギー状態（HP）やパーソナリティに適応して伴走する、ステートフルな LINE 伴走システムの全体構成について説明します。
 
-このシステムは軽量でエッジ環境やサーバーレス環境に対応可能なフレームワークである Hono を基礎としており、Vercel 上でホストされています。
+このシステムは軽量でエッジ環境やサーバーレス環境に対応可能なフレームワークである Hono を基礎としており、Deno / Deno Deploy や Vercel 上でホスト可能です。
 
 ## Component Overview
 

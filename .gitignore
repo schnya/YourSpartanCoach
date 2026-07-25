@@ -27,3 +27,7 @@ test-models.ts
 .DS_Store
 Thumbs.db
 .env*
+
+# lat.md cache
+lat.md/.cache/
+

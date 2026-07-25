@@ -6,7 +6,7 @@ LINE Bot におけるセッション状態や会話履歴、タスク情報を�
 
 ## Upstash Redis Store
 
-本番環境（Vercel）において、コールドスタートやコネクション上限を回避し、高速かつ安定した読み書きを実現するためのサーバーレス向け Redis 構成です。
+本番環境（Deno Deploy）において、コールドスタートやコネクション上限を回避し、高速かつ安定した読み書きを実現するためのサーバーレス向け Redis 構成です。
 
 `process.env.UPSTASH_REDIS_REST_URL` などの環境変数をもとに、[[src/services/memoryStore.ts#getRedisClient]] を経由して Upstash Redis クライアントが動的に初期化されます。キーは `user:${userId}:state` や `user:${userId}:score` のように LINE の `userId` ごとに完全に分離されたマルチテナント構造を採用し、重複排除用のイベントキー `event:${eventId}:processed` は [[src/services/memoryStore.ts#checkAndMarkEventProcessed]] で制御されます。
 
