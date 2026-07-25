@@ -1,11 +1,11 @@
 import assert from "node:assert";
+import { checkAndMarkEventProcessed } from "./memory/dailyLogStore.js";
 import {
-	checkAndMarkEventProcessed,
 	getDisciplineScore,
 	getUserState,
 	setUserState,
 	updateDisciplineScore,
-} from "./memoryStore.js";
+} from "./memory/fsmStore.js";
 
 // Set environment variables for testing local fallback
 process.env.UPSTASH_REDIS_REST_URL = "";

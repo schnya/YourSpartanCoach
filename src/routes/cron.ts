@@ -6,12 +6,14 @@ import {
 	appendSentMessage,
 	carryOverPendingTasks,
 	checkAndMarkEventProcessed,
-	getDisciplineScore,
 	getTodayDateString,
+} from "../services/memory/dailyLogStore.js";
+import {
+	getDisciplineScore,
 	getUserState,
 	setUserState,
 	updateDisciplineScore,
-} from "../services/memoryStore.js";
+} from "../services/memory/fsmStore.js";
 
 // @lat: [[routing#Cron Trigger Routing]]
 const cronApp = new Hono();
@@ -63,17 +65,8 @@ cronApp.get("/morning", async (c) => {
 		const today = getTodayDateString();
 
 		// 1. Carryover tasks
-		const now = new Date();
-		const yesterdayDate = new Date(now);
-		yesterdayDate.setDate(now.getDate() - 1);
-		const formatter = new Intl.DateTimeFormat("en-CA", {
-			timeZone: "Asia/Tokyo",
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-		});
-		const yesterday = formatter.format(yesterdayDate);
-		const carriedCount = await carryOverPendingTasks(userId, yesterday, today);
+		const carriedTasks = await carryOverPendingTasks(userId, today);
+		const carriedCount = carriedTasks.length;
 
 		// 2. Transition state to PENDING
 		await setUserState(userId, "PENDING");

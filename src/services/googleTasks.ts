@@ -1,0 +1,138 @@
+// @lat: [[memory#Google Tasks Integration]]
+export interface GoogleTaskParams {
+	taskText: string;
+	targetStartTime?: string;
+	targetDuration?: number;
+	proofDefinition?: string;
+}
+
+export async function getAccessToken(): Promise<string | null> {
+	const clientId = process.env.GOOGLE_CLIENT_ID;
+	const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+	const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+	if (!clientId || !clientSecret || !refreshToken) {
+		console.warn(
+			"[Google Tasks Warning]: OAuth credentials not configured. Skipping Google Tasks sync.",
+		);
+		return null;
+	}
+
+	try {
+		const res = await fetch("https://oauth2.googleapis.com/token", {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				client_id: clientId,
+				client_secret: clientSecret,
+				refresh_token: refreshToken,
+				grant_type: "refresh_token",
+			}),
+		});
+
+		if (!res.ok) {
+			const errText = await res.text();
+			console.error(
+				`[Google Tasks Token Error]: HTTP ${res.status} - ${errText}`,
+			);
+			return null;
+		}
+
+		const data = (await res.json()) as { access_token?: string };
+		return data.access_token || null;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.error("[Google Tasks Token Fetch Exception]:", msg);
+		return null;
+	}
+}
+
+export async function createGoogleTask(
+	params: GoogleTaskParams,
+): Promise<string | null> {
+	try {
+		const token = await getAccessToken();
+		if (!token) return null;
+
+		const listId = process.env.GOOGLE_TASKS_LIST_ID || "@default";
+		const timePrefix = params.targetStartTime
+			? `[${params.targetStartTime}] `
+			: "";
+		const durationText = params.targetDuration
+			? ` (${params.targetDuration}分ブロック)`
+			: " (50分ブロック)";
+		const title = `${timePrefix}${params.taskText}${durationText}`;
+
+		const notes = `開始予定: ${params.targetStartTime || "未指定"} | 所要時間: ${params.targetDuration || 50}分 | 成果物定義: ${params.proofDefinition || "未指定"}`;
+
+		const res = await fetch(
+			`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(listId)}/tasks`,
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					title,
+					notes,
+				}),
+			},
+		);
+
+		if (!res.ok) {
+			const errText = await res.text();
+			console.error(
+				`[Google Tasks Create Error]: HTTP ${res.status} - ${errText}`,
+			);
+			return null;
+		}
+
+		const data = (await res.json()) as { id?: string };
+		console.log(`[Google Tasks Success]: Created task ID = ${data.id}`);
+		return data.id || null;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.error("[Google Tasks Create Exception]:", msg);
+		return null;
+	}
+}
+
+export async function completeGoogleTask(taskId: string): Promise<boolean> {
+	if (!taskId) return false;
+
+	try {
+		const token = await getAccessToken();
+		if (!token) return false;
+
+		const listId = process.env.GOOGLE_TASKS_LIST_ID || "@default";
+		const res = await fetch(
+			`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,
+			{
+				method: "PATCH",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					status: "completed",
+				}),
+			},
+		);
+
+		if (!res.ok) {
+			const errText = await res.text();
+			console.error(
+				`[Google Tasks Complete Error]: HTTP ${res.status} - ${errText}`,
+			);
+			return false;
+		}
+
+		console.log(`[Google Tasks Success]: Completed task ID = ${taskId}`);
+		return true;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.error("[Google Tasks Complete Exception]:", msg);
+		return false;
+	}
+}

@@ -1,8 +1,5 @@
-import {
-	getDisciplineScore,
-	readPromptTemplate,
-	readUserProfile,
-} from "./memoryStore.js";
+import { getDisciplineScore } from "./memory/fsmStore.js";
+import { readPromptTemplate, readUserProfile } from "./memory/profileStore.js";
 import {
 	MASTER_SYSTEM_PROMPT,
 	SUB_PROMPT_MORNING,
@@ -10,6 +7,47 @@ import {
 	SUB_PROMPT_PROOF,
 	SUB_PROMPT_SCHEDULED,
 } from "./spartanPrompts.js";
+
+// Pure helper function for template variable interpolation
+export function formatTemplate(
+	template: string,
+	variables: Record<string, string | number>,
+): string {
+	return Object.entries(variables).reduce(
+		(str, [key, val]) => str.replaceAll(`{${key}}`, String(val)),
+		template,
+	);
+}
+
+export interface MorningPromptOptions {
+	profile: string;
+	patterns: string;
+	recentLogs: string[];
+	currentHp: number;
+}
+
+export interface EveningPromptOptions {
+	profile: string;
+	patterns: string;
+	todayLog: string;
+}
+
+export interface AccountabilityPromptOptions {
+	profile: string;
+	patterns: string;
+	statedGoals?: string;
+	plannedTasks?: string;
+	actualActions?: string;
+	currentHp: number;
+}
+
+export interface TaskPlanningPromptOptions {
+	profile: string;
+	patterns: string;
+	todayTasks?: string;
+	availableTime?: string;
+	currentHp: number;
+}
 
 // @lat: [[llm#State-Adaptive Prompting]]
 export async function buildSpartanPrompt(
@@ -41,7 +79,7 @@ export async function buildSpartanPrompt(
 	const stakedMatch = profile.match(/(?:誓約|ペナルティ|Staked)[:：\s]*(.+)/i);
 	const stakedDetails = stakedMatch?.[1]?.trim() || "未設定（自己評価のみ）";
 
-	// Build the master prompt with variables
+	// Build master prompt
 	const prompt = MASTER_SYSTEM_PROMPT.replace("{{USER_NAME}}", userName)
 		.replace("{{PRIMARY_GOAL}}", primaryGoal)
 		.replace("{{DISCIPLINE_SCORE}}", String(score))
@@ -61,7 +99,6 @@ export async function buildSpartanPrompt(
 		subPrompt = SUB_PROMPT_PENALTY;
 	}
 
-	// Replace sub-prompt variables
 	subPrompt = subPrompt
 		.replace("{{TARGET_TIME}}", metadata?.targetStartTime || "未設定")
 		.replace("{{TODAY_TASK}}", metadata?.taskText || "未設定");
@@ -70,66 +107,51 @@ export async function buildSpartanPrompt(
 }
 
 export async function buildMorningPrompt(
-	profile: string,
-	patterns: string,
-	recentLogs: string[],
-	currentHp: number,
+	options: MorningPromptOptions,
 ): Promise<string> {
 	const template = await readPromptTemplate("morning");
-	const logsText = recentLogs.join("\n\n---\n\n");
-
-	return template
-		.replace("{USER_PROFILE}", profile)
-		.replace("{PATTERNS}", patterns)
-		.replace("{RECENT_LOGS}", logsText)
-		.replace("{CURRENT_HP}", String(currentHp));
+	return formatTemplate(template, {
+		USER_PROFILE: options.profile,
+		PATTERNS: options.patterns,
+		RECENT_LOGS: options.recentLogs.join("\n\n---\n\n"),
+		CURRENT_HP: options.currentHp,
+	});
 }
 
 export async function buildEveningPrompt(
-	profile: string,
-	patterns: string,
-	todayLog: string,
+	options: EveningPromptOptions,
 ): Promise<string> {
 	const template = await readPromptTemplate("evening");
-
-	return template
-		.replace("{USER_PROFILE}", profile)
-		.replace("{PATTERNS}", patterns)
-		.replace("{TODAY_LOG}", todayLog);
+	return formatTemplate(template, {
+		USER_PROFILE: options.profile,
+		PATTERNS: options.patterns,
+		TODAY_LOG: options.todayLog,
+	});
 }
 
 export async function buildAccountabilityPrompt(
-	profile: string,
-	patterns: string,
-	statedGoals: string,
-	plannedTasks: string,
-	actualActions: string,
-	currentHp: number,
+	options: AccountabilityPromptOptions,
 ): Promise<string> {
 	const template = await readPromptTemplate("accountability");
-
-	return template
-		.replace("{USER_PROFILE}", profile)
-		.replace("{PATTERNS}", patterns)
-		.replace("{STATED_GOALS}", statedGoals || "(明記された長期目標なし)")
-		.replace("{PLANNED_TASKS}", plannedTasks || "(予定タスクなし)")
-		.replace("{ACTUAL_ACTIONS}", actualActions || "(記録された行動なし)")
-		.replace("{CURRENT_HP}", String(currentHp));
+	return formatTemplate(template, {
+		USER_PROFILE: options.profile,
+		PATTERNS: options.patterns,
+		STATED_GOALS: options.statedGoals || "(明記された長期目標なし)",
+		PLANNED_TASKS: options.plannedTasks || "(予定タスクなし)",
+		ACTUAL_ACTIONS: options.actualActions || "(記録された行動なし)",
+		CURRENT_HP: options.currentHp,
+	});
 }
 
 export async function buildTaskPlanningPrompt(
-	profile: string,
-	patterns: string,
-	todayTasks: string,
-	availableTime: string,
-	currentHp: number,
+	options: TaskPlanningPromptOptions,
 ): Promise<string> {
 	const template = await readPromptTemplate("task_planning");
-
-	return template
-		.replace("{USER_PROFILE}", profile)
-		.replace("{PATTERNS}", patterns)
-		.replace("{TODAY_TASKS}", todayTasks || "(未整理のタスクなし)")
-		.replace("{AVAILABLE_TIME}", availableTime || "指定なし")
-		.replace("{CURRENT_HP}", String(currentHp));
+	return formatTemplate(template, {
+		USER_PROFILE: options.profile,
+		PATTERNS: options.patterns,
+		TODAY_TASKS: options.todayTasks || "(未整理のタスクなし)",
+		AVAILABLE_TIME: options.availableTime || "指定なし",
+		CURRENT_HP: options.currentHp,
+	});
 }
