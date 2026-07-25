@@ -1,11 +1,10 @@
 import { getDisciplineScore } from "./memory/fsmStore.js";
-import { readPromptTemplate, readUserProfile } from "./memory/profileStore.js";
+import { readUserProfile } from "./memory/profileStore.js";
 import {
 	MASTER_SYSTEM_PROMPT,
+	SUB_PROMPT_EVENING,
 	SUB_PROMPT_MORNING,
-	SUB_PROMPT_PENALTY,
-	SUB_PROMPT_PROOF,
-	SUB_PROMPT_SCHEDULED,
+	SUB_PROMPT_PROGRESS,
 } from "./spartanPrompts.js";
 
 // Pure helper function for template variable interpolation
@@ -19,52 +18,11 @@ export function formatTemplate(
 	);
 }
 
-export interface MorningPromptOptions {
-	profile: string;
-	patterns: string;
-	recentLogs: string[];
-	currentHp: number;
-}
-
-export interface EveningPromptOptions {
-	profile: string;
-	patterns: string;
-	todayLog: string;
-}
-
-export interface AccountabilityPromptOptions {
-	profile: string;
-	patterns: string;
-	statedGoals?: string;
-	plannedTasks?: string;
-	actualActions?: string;
-	currentHp: number;
-}
-
-export interface TaskPlanningPromptOptions {
-	profile: string;
-	patterns: string;
-	todayTasks?: string;
-	availableTime?: string;
-	currentHp: number;
-}
-
 // @lat: [[llm#State-Adaptive Prompting]]
 export async function buildSpartanPrompt(
 	userId: string,
-	state:
-		| "IDLE"
-		| "PENDING"
-		| "SCHEDULED"
-		| "EXECUTING"
-		| "REPORTING"
-		| "ESCAPED",
-	metadata?: {
-		taskText?: string;
-		targetStartTime?: string;
-		targetDuration?: number;
-		proofDefinition?: string;
-	},
+	state: "MORNING" | "PROGRESS" | "EVENING",
+	googleTasks?: { id: string; title: string }[],
 ): Promise<string> {
 	const profile = await readUserProfile(userId);
 	const score = await getDisciplineScore(userId);
@@ -83,75 +41,26 @@ export async function buildSpartanPrompt(
 	const prompt = MASTER_SYSTEM_PROMPT.replace("{{USER_NAME}}", userName)
 		.replace("{{PRIMARY_GOAL}}", primaryGoal)
 		.replace("{{DISCIPLINE_SCORE}}", String(score))
-		.replace("{{STAKED_COMMITMENT_DETAILS}}", stakedDetails)
-		.replace("{{TODAY_TASK}}", metadata?.taskText || "未設定")
-		.replace("{{TARGET_TIME}}", metadata?.targetStartTime || "未設定");
+		.replace("{{STAKED_COMMITMENT_DETAILS}}", stakedDetails);
 
-	// Append modular sub-prompt
+	// Append modular sub-prompt based on context
 	let subPrompt = "";
-	if (state === "IDLE" || state === "PENDING") {
+	if (state === "MORNING") {
 		subPrompt = SUB_PROMPT_MORNING;
-	} else if (state === "SCHEDULED" || state === "EXECUTING") {
-		subPrompt = SUB_PROMPT_SCHEDULED;
-	} else if (state === "REPORTING") {
-		subPrompt = SUB_PROMPT_PROOF;
-	} else if (state === "ESCAPED") {
-		subPrompt = SUB_PROMPT_PENALTY;
+	} else if (state === "PROGRESS") {
+		subPrompt = SUB_PROMPT_PROGRESS;
+	} else if (state === "EVENING") {
+		subPrompt = SUB_PROMPT_EVENING;
 	}
 
-	subPrompt = subPrompt
-		.replace("{{TARGET_TIME}}", metadata?.targetStartTime || "未設定")
-		.replace("{{TODAY_TASK}}", metadata?.taskText || "未設定");
+	// Inject current Google Tasks list when available
+	let taskContext = "";
+	if (googleTasks && googleTasks.length > 0) {
+		const formatted = googleTasks
+			.map((t, i) => `[${i + 1}] ${t.title}`)
+			.join("\n");
+		taskContext = `\n\n# Current Google Tasks\n${formatted}`;
+	}
 
-	return `${prompt}\n\n---\n\n${subPrompt}`;
-}
-
-export async function buildMorningPrompt(
-	options: MorningPromptOptions,
-): Promise<string> {
-	const template = await readPromptTemplate("morning");
-	return formatTemplate(template, {
-		USER_PROFILE: options.profile,
-		PATTERNS: options.patterns,
-		RECENT_LOGS: options.recentLogs.join("\n\n---\n\n"),
-		CURRENT_HP: options.currentHp,
-	});
-}
-
-export async function buildEveningPrompt(
-	options: EveningPromptOptions,
-): Promise<string> {
-	const template = await readPromptTemplate("evening");
-	return formatTemplate(template, {
-		USER_PROFILE: options.profile,
-		PATTERNS: options.patterns,
-		TODAY_LOG: options.todayLog,
-	});
-}
-
-export async function buildAccountabilityPrompt(
-	options: AccountabilityPromptOptions,
-): Promise<string> {
-	const template = await readPromptTemplate("accountability");
-	return formatTemplate(template, {
-		USER_PROFILE: options.profile,
-		PATTERNS: options.patterns,
-		STATED_GOALS: options.statedGoals || "(明記された長期目標なし)",
-		PLANNED_TASKS: options.plannedTasks || "(予定タスクなし)",
-		ACTUAL_ACTIONS: options.actualActions || "(記録された行動なし)",
-		CURRENT_HP: options.currentHp,
-	});
-}
-
-export async function buildTaskPlanningPrompt(
-	options: TaskPlanningPromptOptions,
-): Promise<string> {
-	const template = await readPromptTemplate("task_planning");
-	return formatTemplate(template, {
-		USER_PROFILE: options.profile,
-		PATTERNS: options.patterns,
-		TODAY_TASKS: options.todayTasks || "(未整理のタスクなし)",
-		AVAILABLE_TIME: options.availableTime || "指定なし",
-		CURRENT_HP: options.currentHp,
-	});
+	return `${prompt}${taskContext}\n\n---\n\n${subPrompt}`;
 }

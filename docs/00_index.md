@@ -19,7 +19,7 @@ type: spec
    - コミットメント・スタック（環境的・社会的・経済的）
    - 50分集中ブロック管理と高頻度PDCA
 2. [[02_ux_architecture|02. LINE Bot UI/UX アーキテクチャ & 状態遷移 (FSM)]]
-   - リッチメニュー配置と定刻単発通知（追いLINE無しの原則）
+   - 定刻単発通知（ボタンなし・追いLINE無しの原則）
    - 有限状態機械（FSM: IDLE, SCHEDULED, EXECUTING, REPORTING, ESCAPED）
 3. [[03_system_prompt|03. システムプロンプトおよびAIエージェント構造設計]]
    - モジュール分離型アーキテクチャ（Task Router）

@@ -20,25 +20,30 @@ async function runTests() {
 	const initialState = await getUserState(testUserId);
 	assert.strictEqual(initialState.state, "IDLE");
 
-	// Test 2: Transition to PENDING
-	console.log("- Test 2: Transitioning to PENDING...");
-	await setUserState(testUserId, "PENDING");
-	const statePending = await getUserState(testUserId);
-	assert.strictEqual(statePending.state, "PENDING");
-
-	// Test 3: Transition to SCHEDULED with metadata
-	console.log("- Test 3: Transitioning to SCHEDULED with metadata...");
+	// Test 2: Transition to ACTIVE (morning activation)
+	console.log("- Test 2: Transitioning to ACTIVE with snapshot...");
 	const metadata = {
-		taskText: "筋トレ30分",
-		targetStartTime: "07:30",
-		targetDuration: 30,
-		proofDefinition: "ダンベルを持った写真",
+		taskSnapshot: ["task-1", "task-2"],
+		tasksChangedToday: false,
+		repliedToday: false,
+		lastProgressPushAt: new Date().toISOString(),
 	};
-	await setUserState(testUserId, "SCHEDULED", metadata);
-	const stateScheduled = await getUserState(testUserId);
-	assert.strictEqual(stateScheduled.state, "SCHEDULED");
-	assert.strictEqual(stateScheduled.metadata?.taskText, "筋トレ30分");
-	assert.strictEqual(stateScheduled.metadata?.targetStartTime, "07:30");
+	await setUserState(testUserId, "ACTIVE", metadata);
+	const stateActive = await getUserState(testUserId);
+	assert.strictEqual(stateActive.state, "ACTIVE");
+	assert.deepStrictEqual(stateActive.metadata?.taskSnapshot, ["task-1", "task-2"]);
+	assert.strictEqual(stateActive.metadata?.tasksChangedToday, false);
+
+	// Test 3: Mark task change + reply for the day
+	console.log("- Test 3: Marking tasksChangedToday & repliedToday...");
+	await setUserState(testUserId, "ACTIVE", {
+		...stateActive.metadata,
+		tasksChangedToday: true,
+		repliedToday: true,
+	});
+	const stateUpdated = await getUserState(testUserId);
+	assert.strictEqual(stateUpdated.metadata?.tasksChangedToday, true);
+	assert.strictEqual(stateUpdated.metadata?.repliedToday, true);
 
 	// Test 4: Default Discipline Score is 100
 	console.log("- Test 4: Checking default discipline score...");

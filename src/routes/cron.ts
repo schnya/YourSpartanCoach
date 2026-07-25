@@ -5,12 +5,9 @@ import { listGoogleTasks } from "../services/googleTasks.js";
 import { generateMessage } from "../services/llm.js";
 import {
 	appendSentMessage,
-	carryOverPendingTasks,
-	checkAndMarkEventProcessed,
 	getTodayDateString,
 } from "../services/memory/dailyLogStore.js";
 import {
-	getDisciplineScore,
 	getUserState,
 	setUserState,
 	updateDisciplineScore,
@@ -59,49 +56,46 @@ async function sendPushMessage(userId: string, text: string) {
 	}
 }
 
+function arraysDiffer(a: string[] = [], b: string[] = []): boolean {
+	if (a.length !== b.length) return true;
+	const setB = new Set(b);
+	return a.some((x) => !setB.has(x));
+}
+
 // 朝の Cron (/cron/morning) - 毎朝07:00に発動
+// 承認フェーズなし: Google Tasks から当日タスクを取得し、AIが優先度付け＋
+// 行動経済学的意見を添えて push。その後 ACTIVE ループを開始。
 cronApp.get("/morning", async (c) => {
 	try {
 		const userId = process.env.LINE_USER_ID || "default_user";
-		const today = getTodayDateString();
 
-		// 1. Carryover tasks
-		const carriedTasks = await carryOverPendingTasks(userId, today);
-		const carriedCount = carriedTasks.length;
-
-		// 2. Fetch uncompleted Google Tasks
 		const googleTasks = await listGoogleTasks();
+		const taskIds = googleTasks.map((t) => t.id).filter(Boolean) as string[];
 
-		// 3. Transition state to PENDING
-		await setUserState(userId, "PENDING");
+		// スナップショット保存 + 日次フラグリセット + ACTIVE化
+		await setUserState(userId, "ACTIVE", {
+			taskSnapshot: taskIds,
+			tasksChangedToday: false,
+			repliedToday: false,
+			lastProgressPushAt: new Date().toISOString(),
+			currentTaskSnapshot: taskIds,
+		});
 
-		// 4. Build spartan morning prompt
-		const prompt = await buildSpartanPrompt(userId, "PENDING");
+		const prompt = await buildSpartanPrompt(userId, "MORNING", googleTasks);
+		const morningMsg = await generateMessage(prompt);
 
-		let morningPromptInstruction = "";
-		if (googleTasks.length > 0) {
-			const formattedTasks = googleTasks
-				.map(
-					(t, index) =>
-						`[T${index + 1}] ID:${t.id} タイトル:${t.title}${t.notes ? ` (メモ:${t.notes})` : ""}`,
-				)
-				.join("\n");
-
-			morningPromptInstruction = `${prompt}\n\n朝07:00になりました。ユーザーの Google Tasks に以下の未完了タスクがあります:\n${formattedTasks}\n\n上記タスクを50分ブロック（推奨開始時刻、所要時間50分、測定可能な成果物定義）に整理して提案し、ユーザーへ本日の確定入力を要求する規律メッセージを出力してください。キャリーオーバータスク: ${carriedCount}件。`;
-		} else {
-			morningPromptInstruction = `${prompt}\n\n朝07:00になりました。今日のタスク計画（行動内容、開始時間、所要時間、成果基準）の入力を要求する規律メッセージを出力してください。キャリーオーバーしたタスク件数：${carriedCount}件。`;
-		}
-
-		const morningMsg = await generateMessage(morningPromptInstruction);
-
-		await appendSentMessage(userId, today, "Morning", morningMsg);
+		await appendSentMessage(
+			userId,
+			getTodayDateString(),
+			"Morning",
+			morningMsg,
+		);
 		await sendPushMessage(userId, morningMsg);
 
 		return c.json({
 			success: true,
 			type: "morning",
 			message: morningMsg,
-			carriedTasks: carriedCount,
 			googleTasksCount: googleTasks.length,
 		});
 	} catch (err: unknown) {
@@ -111,132 +105,114 @@ cronApp.get("/morning", async (c) => {
 	}
 });
 
-// FSM 監視チェック Cron (/cron/monitor) - 毎分または定期稼働で発動
-cronApp.get("/monitor", async (c) => {
+// 50分おき進捗確認 Cron (/cron/progress) - */50 * * * * で発動
+// ACTIVE なら進捗メッセージを push。直近50分で返信もタスク増減もなければ
+// IDLE（LINE未確認ステータス）に切り替え、以降は push を停止する。
+cronApp.get("/progress", async (c) => {
 	try {
 		const userId = process.env.LINE_USER_ID || "default_user";
 		const stateData = await getUserState(userId);
-		const now = new Date();
 
-		console.log(
-			`[FSM Monitor Check]: User=${userId}, State=${stateData.state}`,
+		// IDLE（未確認中）: push せず、webhook で復帰されるまで待機
+		if (stateData.state !== "ACTIVE") {
+			return c.json({
+				success: true,
+				state: stateData.state,
+				msg: "Inactive (LINE unchecked). Skipping progress push.",
+			});
+		}
+
+		const googleTasks = await listGoogleTasks();
+		const currentIds = googleTasks.map((t) => t.id).filter(Boolean) as string[];
+		const snapshot = stateData.metadata?.taskSnapshot || [];
+
+		// タスクの増減（新規追加＋完了）を検知
+		const tasksChanged = arraysDiffer(snapshot, currentIds);
+		if (tasksChanged) {
+			await setUserState(userId, "ACTIVE", {
+				...stateData.metadata,
+				tasksChangedToday: true,
+				currentTaskSnapshot: currentIds,
+			});
+		}
+
+		// 直近50分のユーザー返信を判定（前回push以降に返信があれば recentReply=true）
+		const lastReply = stateData.metadata?.lastUserReplyAt
+			? new Date(stateData.metadata.lastUserReplyAt)
+			: null;
+		const lastPush = stateData.metadata?.lastProgressPushAt
+			? new Date(stateData.metadata.lastProgressPushAt)
+			: null;
+		const recentReply = !!lastReply && !!lastPush && lastReply > lastPush;
+
+		const prompt = await buildSpartanPrompt(userId, "PROGRESS", googleTasks);
+		const progressMsg = await generateMessage(prompt);
+
+		await appendSentMessage(
+			userId,
+			getTodayDateString(),
+			"Progress",
+			progressMsg,
 		);
+		await sendPushMessage(userId, progressMsg);
 
-		if (
-			stateData.state === "SCHEDULED" &&
-			stateData.metadata?.targetStartTime
-		) {
-			const [hours, minutes] = stateData.metadata.targetStartTime
-				.split(":")
-				.map(Number);
-			const targetTime = new Date();
-			targetTime.setHours(hours, minutes, 0, 0);
-
-			const limitTime = new Date(targetTime.getTime() + 5 * 60 * 1000); // T + 5min
-
-			if (now > limitTime) {
-				console.log(
-					`[FSM Delinquent Start Log]: User=${userId} missed start. Non-chase policy: recording silent ESCAPED transition.`,
-				);
-
-				// Silent transition to ESCAPED without sending chase LINE push messages
-				await setUserState(userId, "ESCAPED", {
-					...stateData.metadata,
-					silentEscapedReason: "LATE_START",
-				});
-
-				return c.json({
-					success: true,
-					triggered: "late_start_silent",
-					msg: "Silent transition executed per Non-Chase policy",
-				});
-			}
-		}
-
-		if (
-			stateData.state === "REPORTING" &&
-			stateData.metadata?.reportingDeadline
-		) {
-			const deadline = new Date(stateData.metadata.reportingDeadline);
-
-			if (now > deadline) {
-				console.log(
-					`[FSM Delinquent Proof Log]: User=${userId} missed proof deadline. Non-chase policy: recording silent ESCAPED transition.`,
-				);
-
-				// Silent transition to ESCAPED without sending chase LINE push messages
-				await setUserState(userId, "ESCAPED", {
-					...stateData.metadata,
-					silentEscapedReason: "LATE_PROOF",
-				});
-
-				return c.json({
-					success: true,
-					triggered: "late_proof_silent",
-					msg: "Silent transition executed per Non-Chase policy",
-				});
-			}
-		}
+		// 次回判定用に push 時刻を更新。返信も増減もなければ IDLE 化。
+		const nextActive = recentReply || tasksChanged;
+		await setUserState(userId, nextActive ? "ACTIVE" : "IDLE", {
+			...stateData.metadata,
+			tasksChangedToday: stateData.metadata?.tasksChangedToday || tasksChanged,
+			currentTaskSnapshot: currentIds,
+			lastProgressPushAt: new Date().toISOString(),
+		});
 
 		return c.json({
 			success: true,
-			state: stateData.state,
-			msg: "No action needed",
+			type: "progress",
+			message: progressMsg,
+			nextState: nextActive ? "ACTIVE" : "IDLE",
+			recentReply,
+			tasksChanged,
 		});
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
-		console.error("[Cron Monitor Error]:", message);
+		console.error("[Cron Progress Error]:", message);
 		return c.json({ success: false, error: message }, 500);
 	}
 });
 
-// 夜の Cron (/cron/evening) - 振り返り分析 & 一括査定 (Idempotent)
+// 夜の Cron (/cron/evening) - 毎夜22:00に発動
+// 日中のタスク増減とLINE返信の有無で加点/減点を判定し、スコアに基づくトーンで総括を LLM 生成して push。
 cronApp.get("/evening", async (c) => {
 	try {
 		const userId = process.env.LINE_USER_ID || "default_user";
 		const today = getTodayDateString();
-
-		// Idempotency check for evening cron execution
-		const idempotencyKey = `cron:evening:${today}:${userId}`;
-		const isDuplicate = await checkAndMarkEventProcessed(idempotencyKey);
-		if (isDuplicate) {
-			console.warn(
-				`[Cron Evening Warning]: Idempotency check triggered. Already executed for today (${today}).`,
-			);
-			return c.json({
-				success: true,
-				duplicate: true,
-				msg: "Evening cron already processed for today.",
-			});
-		}
-
-		// If state is not IDLE at evening, batch penalty processing occurs
 		const stateData = await getUserState(userId);
-		if (stateData.state !== "IDLE") {
-			console.log(
-				`[FSM Evening Failure]: User=${userId} was in state ${stateData.state} at night. Applying batch penalty.`,
-			);
-			await updateDisciplineScore(userId, -10);
-			await setUserState(userId, "IDLE"); // Reset state for next day
+
+		const tasksChanged = stateData.metadata?.tasksChangedToday || false;
+		const replied = stateData.metadata?.repliedToday || false;
+
+		let delta = 0;
+		if (tasksChanged && replied) delta = 5;
+		else if (!tasksChanged && !replied) delta = -5;
+
+		if (delta !== 0) {
+			await updateDisciplineScore(userId, delta);
 		}
+		await setUserState(userId, "IDLE"); // 翌日のリセット
 
-		const score = await getDisciplineScore(userId);
-		const postponeCount = stateData.metadata?.physicalPostponeCount || 0;
-
-		let patternNotice = "";
-		if (postponeCount >= 2) {
-			patternNotice = `\n【パターン警戒】物理的延期が累計${postponeCount}回記録されています。体調管理の欠陥か、無意識な逃避の自己偽装の疑いがあります。`;
-		}
-
-		const eveningMsg = `【夜の総括】本日もお疲れ様でした。
-現在の規律スコア: ${score} / 100
-物理的延期累計: ${postponeCount}回${patternNotice}
-明日も07:00に計画入力を受け付けます。本日の進捗はすべてログに記録されました。明日はさらに高い規律を目指しましょう。`;
+		const googleTasks = await listGoogleTasks();
+		const prompt = await buildSpartanPrompt(userId, "EVENING", googleTasks);
+		const eveningMsg = await generateMessage(prompt);
 
 		await appendSentMessage(userId, today, "Evening", eveningMsg);
 		await sendPushMessage(userId, eveningMsg);
 
-		return c.json({ success: true, type: "evening", message: eveningMsg });
+		return c.json({
+			success: true,
+			type: "evening",
+			message: eveningMsg,
+			delta,
+		});
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
 		console.error("[Cron Evening Error]:", message);

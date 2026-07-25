@@ -1,27 +1,27 @@
 import { getRedisClient } from "./redisClient.js";
 
-export type FsmState =
-	| "IDLE"
-	| "PENDING"
-	| "SCHEDULED"
-	| "EXECUTING"
-	| "REPORTING"
-	| "ESCAPED";
+// 新モデル: 2状態FSM
+//  ACTIVE: 50分おきの進捗確認ループが稼働中（ユーザーが応答中 / タスク増減あり）
+//  IDLE:   日の始まり / LINE未確認ステータス（push停止中）
+type FsmState = "IDLE" | "ACTIVE";
 
-export interface FsmStateData {
+interface FsmStateData {
 	state: FsmState;
 	metadata?: {
-		taskText?: string;
-		targetStartTime?: string; // format: "20:00"
-		targetDuration?: number; // in minutes
-		proofDefinition?: string;
-		targetDateStr?: string;
-		warningSent?: boolean;
-		reportingDeadline?: string; // ISO String
-		silentEscapedReason?: string;
-		slicedTask?: boolean;
+		// 朝スナップショット: 当日のGoogle Tasks ID群（差分検知用）
+		taskSnapshot?: string[];
+		// 日中のタスク増減（新規追加＋完了）があったか
+		tasksChangedToday?: boolean;
+		// 日中にユーザーからLINE返信があったか
+		repliedToday?: boolean;
+		// 最後に進捗確認メッセージをpushした時刻（ISO文字列）
+		lastProgressPushAt?: string;
+		// 最後にユーザーからLINE返信があった時刻（ISO文字列）
+		lastUserReplyAt?: string;
+		// 物理的延期累計（SOS②用、互換維持）
 		physicalPostponeCount?: number;
-		googleTaskId?: string;
+		// 直近のGoogle Tasks一覧キャッシュ（進捗メッセージ用）
+		currentTaskSnapshot?: string[];
 	};
 }
 

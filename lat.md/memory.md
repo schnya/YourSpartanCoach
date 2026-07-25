@@ -30,15 +30,11 @@ Deno Deploy はステートレスなため、全ログは Upstash Redis に永�
 
 ユーザーの外部タスク管理ツール（Google Tasks）と ARES FSM 状態を非同期・非ブロッキングで連携する構造について説明します。
 
-[[src/services/googleTasks.ts]] において `listGoogleTasks` で未完了タスクを取得し、朝の Cron 発動時に LINE 提示します。承認時は `findMatchingGoogleTask` で既存タスク ID を照合・バインドし二重作成を防ぎます。`completeGoogleTask` で合格したタスクを完了更新します。
+[[src/services/googleTasks.ts]] において `listGoogleTasks` で未完了タスクを取得し、朝の Cron（`/morning`）発動時に AIが優先度付けと行動経済学的意見を添えて LINE 提示します。ユーザーの承認フェーズはなく、タスクの書き換えはユーザー自身が Google Tasks 側で行います。50分おきの `/progress` では `listGoogleTaskIds` で現在のタスクID群を取得し、朝のスナップショット（`taskSnapshot`）との差分（新規追加＋完了）を検知して増減フラグを立てます。
 
-### Plan Approval Sync
+### User Log Recording & Task Sync
 
-朝の計画承認時に既存 Google Task と一致した場合はその `googleTaskId` を FSM metadata にバインドし、新規タスクの場合のみ `createGoogleTask` を fire-and-forget 実行します。データは [[src/services/memory/fsmStore.ts#FsmStateData]] に保存され、後続の完了同期で再利用されます。
-
-### Proof Approval Completion
-
-画像またはテキストによる成果証拠が LLM 審査で PASS と判定されたタイミング（[[src/handlers/messageHandlers.ts#handleImageMessage]] および [[src/handlers/messageHandlers.ts#handleTextProofMessage]] の PASS 分岐）で、保存済み `googleTaskId` を用いて `completeGoogleTask` を fire-and-forget で呼び出し、Google Tasks 上のタスクを完了状態へ更新します。`googleTaskId` が未設定の場合は呼び出しをスキップします。
+ユーザーからのテキスト・画像による報告メッセージ受信時（[[src/handlers/messageHandlers.ts#handleUserLogMessage]]）に日次ログへの書き込みと状態更新を行い、返信フラグの反映および未確認（IDLE）状態からのACTIVE復帰を処理します。
 
 ### OAuth Setup & Token Provisioning
 

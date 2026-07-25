@@ -10,8 +10,6 @@ export {
 	saveDailyLog,
 } from "./memory/dailyLogStore.js";
 export {
-	type FsmState,
-	type FsmStateData,
 	getDisciplineScore,
 	getUserState,
 	setUserState,

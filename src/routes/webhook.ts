@@ -6,26 +6,11 @@ import {
 } from "@line/bot-sdk";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import {
-	handleImageMessage,
-	handleMorningPlanMessage,
-	handleTextProofMessage,
-} from "../handlers/messageHandlers.js";
-import { handlePostbackEvent } from "../handlers/postbackHandlers.js";
-import {
-	appendRawUserLog,
-	checkAndMarkEventProcessed,
-	getTodayDateString,
-} from "../services/memory/dailyLogStore.js";
-import { getUserState } from "../services/memory/fsmStore.js";
+import { handleUserLogMessage } from "../handlers/messageHandlers.js";
+import { appendRawUserLog, checkAndMarkEventProcessed, getTodayDateString } from "../services/memory/dailyLogStore.js";
 
 // @lat: [[routing#Webhook Endpoint]]
 const webhookApp = new Hono();
-
-interface LineClients {
-	client: messagingApi.MessagingApiClient | null;
-	blobClient: messagingApi.MessagingApiBlobClient | null;
-}
 
 function getLineConfig(c: Context) {
 	const env = (c.env as Record<string, string>) || {};
@@ -42,7 +27,7 @@ function getLineConfig(c: Context) {
 	return { channelSecret, channelAccessToken };
 }
 
-function createLineClients(channelAccessToken: string): LineClients {
+function createLineClients(channelAccessToken: string) {
 	if (!channelAccessToken) return { client: null, blobClient: null };
 	return {
 		client: new messagingApi.MessagingApiClient({ channelAccessToken }),
@@ -54,7 +39,7 @@ function createLineClients(channelAccessToken: string): LineClients {
 
 async function processSingleEvent(
 	event: WebhookEvent,
-	clients: LineClients,
+	clients: { client: messagingApi.MessagingApiClient | null; blobClient: messagingApi.MessagingApiBlobClient | null },
 	today: string,
 ) {
 	const eventId =
@@ -73,60 +58,30 @@ async function processSingleEvent(
 		return;
 	}
 
-	if (event.type === "message" && event.message.type === "text") {
-		await appendRawUserLog(userId, today, event.message.text.trim());
-	}
-
-	const stateData = await getUserState(userId);
-	const replyToken = "replyToken" in event ? event.replyToken : undefined;
-
-	if (event.type === "postback" && replyToken && clients.client) {
-		return await handlePostbackEvent(event, stateData, clients.client);
-	}
-
-	if (event.type === "message" && replyToken && clients.client) {
-		if (event.message.type === "image" && clients.blobClient) {
-			return await handleImageMessage(
-				event.message.id,
-				stateData,
-				userId,
-				replyToken,
-				clients.client,
-				clients.blobClient,
-			);
-		}
+	// ユーザーからのテキスト・画像投稿はすべて「記録」として扱う
+	if (event.type === "message" && userId) {
+		const replyToken = "replyToken" in event ? event.replyToken : undefined;
+		if (!replyToken || !clients.client) return;
 
 		if (event.message.type === "text") {
-			const text = event.message.text.trim();
-			console.log(
-				`[Webhook Text Message Received]: ${text} in state=${stateData.state}`,
-			);
-
-			if (stateData.state === "IDLE" || stateData.state === "PENDING") {
-				return await handleMorningPlanMessage(
-					userId,
-					text,
-					stateData,
-					replyToken,
-					clients.client,
-				);
-			}
-
-			if (stateData.state === "REPORTING") {
-				return await handleTextProofMessage(
-					userId,
-					text,
-					stateData,
-					replyToken,
-					clients.client,
-				);
-			}
-
-			return await clients.client.replyMessage({
+			await appendRawUserLog(userId, today, event.message.text.trim());
+			await handleUserLogMessage(
+				userId,
+				event.message.text.trim(),
 				replyToken,
-				messages: [{ type: "text", text: "了解。ログに記録した。" }],
-			});
+				clients.client,
+				false,
+			);
+		} else if (event.message.type === "image") {
+			await handleUserLogMessage(
+				userId,
+				"",
+				replyToken,
+				clients.client,
+				true,
+			);
 		}
+		// その他のメッセージタイプ（スタンプ等）はログのみ
 	}
 }
 
