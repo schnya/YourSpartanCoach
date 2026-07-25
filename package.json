@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "deno task dev",
-    "start": "deno task start"
+    "start": "deno task start",
+    "pull-logs": "node scripts/pullLogs.mjs && node scripts/pruneLogs.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

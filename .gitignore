@@ -19,6 +19,10 @@ memory/prompt_*.md
 memory/daily/*.md
 !memory/daily/sample.md
 
+# Pulled production daily logs (private; synced locally via scripts/pullLogs.mjs)
+# Source of truth is Upstash Redis, so local copies are cache only.
+memory/users/*/logs/
+
 # Obsidian & Local Metadata
 .obsidian/
 test-models.ts
@@ -30,4 +34,5 @@ Thumbs.db
 
 # lat.md cache
 lat.md/.cache/
+
 

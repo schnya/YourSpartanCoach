@@ -22,6 +22,10 @@ LINE Bot におけるセッション状態や会話履歴、タスク情報を�
 
 [[src/services/memory/dailyLogStore.ts#readDailyLog]] や [[src/services/memory/dailyLogStore.ts#saveDailyLog]] によって Redis やローカル Markdown のログを相互に同期し、[[src/services/memory/dailyLogStore.ts#carryOverPendingTasks]] が前日の未完了タスクをキャリーオーバーします。さらに、[[src/services/memory/fsmStore.ts#getUserState]] や [[src/services/memory/fsmStore.ts#setUserState]] による FSM 状態の更新や、[[src/services/memory/fsmStore.ts#getDisciplineScore]] および [[src/services/memory/fsmStore.ts#updateDisciplineScore]] による 0〜100 の範囲でクランプされた規律スコアの変化もデイリーログの Status セクションに自動的に反映・追記されます。
 
+### Local Log Sync & Pruning
+
+Deno Deploy はステートレスなため、全ログは Upstash Redis に永続保存され、ローカルの `memory/users/<userId>/logs/*.md` は分析・開発用のキャッシュです。`scripts/pullLogs.mjs` が Redis から全ログを一括同期し、`scripts/pruneLogs.mjs` が保持期間（既定 30 日）超のログを削除します。ローカルログは `.gitignore` で除外し、実ログのコミット漏洩を防ぎます。
+
 ## Google Tasks Integration
 
 ユーザーの外部タスク管理ツール（Google Tasks）と ARES FSM 状態を非同期・非ブロッキングで連携する構造について説明します。
