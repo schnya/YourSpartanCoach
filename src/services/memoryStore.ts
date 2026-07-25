@@ -4,18 +4,15 @@ import { Redis } from "@upstash/redis";
 
 const MEMORY_DIR = path.resolve(process.cwd(), "memory");
 const IS_VERCEL = !!process.env.VERCEL;
-const DAILY_DIR = IS_VERCEL
-  ? path.resolve("/tmp", "daily")
-  : path.resolve(MEMORY_DIR, "daily");
 
-// Upstash Redis クライアントの動的初期化
+// @lat: [[memory#Upstash Redis Store]]
 function getRedisClient(): Redis | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token && url !== "your_upstash_redis_rest_url_here") {
-    return new Redis({ url, token });
-  }
-  return null;
+	const url = process.env.UPSTASH_REDIS_REST_URL;
+	const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+	if (url && token && url !== "your_upstash_redis_rest_url_here") {
+		return new Redis({ url, token });
+	}
+	return null;
 }
 
 export async function ensureDirectoryExists(dirPath: string) {
@@ -26,20 +23,67 @@ export async function ensureDirectoryExists(dirPath: string) {
 	}
 }
 
-export async function readUserProfile(): Promise<string> {
+// @lat: [[memory#Local Markdown Store]]
+export async function readUserProfile(userId: string): Promise<string> {
+	const redis = getRedisClient();
+	if (redis) {
+		try {
+			const cached = await redis.get<string>(`user:${userId}:profile`);
+			if (cached) return cached;
+		} catch (err) {
+			console.error("[Redis Read Profile Error]:", err);
+		}
+	}
+
+	// Fallback to local files
 	try {
-		const filePath = path.join(MEMORY_DIR, "USER_PROFILE.md");
-		return await fs.readFile(filePath, "utf-8");
+		const userProfilePath = path.join(
+			MEMORY_DIR,
+			"users",
+			userId,
+			"USER_PROFILE.md",
+		);
+		return await fs.readFile(userProfilePath, "utf-8");
 	} catch {
 		try {
-			const samplePath = path.join(MEMORY_DIR, "USER_PROFILE.sample.md");
-			return await fs.readFile(samplePath, "utf-8");
+			const filePath = path.join(MEMORY_DIR, "USER_PROFILE.md");
+			return await fs.readFile(filePath, "utf-8");
 		} catch {
-			return "名前: ユーザー";
+			try {
+				const samplePath = path.join(MEMORY_DIR, "USER_PROFILE.sample.md");
+				return await fs.readFile(samplePath, "utf-8");
+			} catch {
+				return "名前: ユーザー\n目標: 規律ある生活";
+			}
 		}
 	}
 }
 
+// @lat: [[memory#Local Markdown Store]]
+export async function saveUserProfile(
+	userId: string,
+	content: string,
+): Promise<void> {
+	const redis = getRedisClient();
+	if (redis) {
+		try {
+			await redis.set(`user:${userId}:profile`, content);
+		} catch (err) {
+			console.error("[Redis Write Profile Error]:", err);
+		}
+	}
+
+	try {
+		const userDir = path.join(MEMORY_DIR, "users", userId);
+		await ensureDirectoryExists(userDir);
+		const userProfilePath = path.join(userDir, "USER_PROFILE.md");
+		await fs.writeFile(userProfilePath, content, "utf-8");
+	} catch (err) {
+		console.error("[Local Write Profile Error]:", err);
+	}
+}
+
+// @lat: [[memory#Local Markdown Store]]
 export async function readPatterns(): Promise<string> {
 	try {
 		const filePath = path.join(MEMORY_DIR, "patterns.md");
@@ -49,6 +93,7 @@ export async function readPatterns(): Promise<string> {
 	}
 }
 
+// @lat: [[memory#Local Markdown Store]]
 export async function readPromptTemplate(
 	type: "morning" | "evening" | "accountability" | "task_planning",
 ): Promise<string> {
@@ -65,7 +110,8 @@ export async function readPromptTemplate(
 		} catch {
 			if (type === "morning") return "朝のメッセージを生成してください。";
 			if (type === "evening") return "夜のメッセージを生成してください。";
-			if (type === "accountability") return "目標と実際の行動の差分を分析してください。";
+			if (type === "accountability")
+				return "目標と実際の行動の差分を分析してください。";
 			return "タスクの優先順位を整理してください。";
 		}
 	}
@@ -81,45 +127,73 @@ export function getTodayDateString(): string {
 	return formatter.format(new Date());
 }
 
-export async function readDailyLog(dateStr: string): Promise<string> {
+// @lat: [[memory#Daily Action Logs]]
+export async function readDailyLog(
+	userId: string,
+	dateStr: string,
+): Promise<string> {
 	const redis = getRedisClient();
 	if (redis) {
 		try {
-			const data = await redis.get<string>(`daily:${dateStr}`);
+			const data = await redis.get<string>(`user:${userId}:daily:${dateStr}`);
 			if (data) return data;
 		} catch (err: unknown) {
-			console.error("[Redis Read Error]:", err);
+			console.error("[Redis Daily Read Error]:", err);
 		}
 	}
 
 	try {
-		const filePath = path.join(DAILY_DIR, `${dateStr}.md`);
+		const userDailyDir = IS_VERCEL
+			? path.resolve("/tmp", "users", userId, "daily")
+			: path.resolve(MEMORY_DIR, "users", userId, "daily");
+		const filePath = path.join(userDailyDir, `${dateStr}.md`);
 		return await fs.readFile(filePath, "utf-8");
 	} catch {
-		return `# ${dateStr}\n\n## Status\nHP: 3\n\n## Morning Sent\n\n## Raw Logs\n\n## Evening Sent\n`;
+		// Fallback to non-tenant files
+		try {
+			const dailyDir = IS_VERCEL
+				? path.resolve("/tmp", "daily")
+				: path.resolve(MEMORY_DIR, "daily");
+			const filePath = path.join(dailyDir, `${dateStr}.md`);
+			return await fs.readFile(filePath, "utf-8");
+		} catch {
+			return `# ${dateStr}\n\n## Status\nHP: 3\n\n## Morning Sent\n\n## Raw Logs\n\n## Evening Sent\n`;
+		}
 	}
 }
 
-export async function saveDailyLog(dateStr: string, content: string): Promise<void> {
+// @lat: [[memory#Daily Action Logs]]
+export async function saveDailyLog(
+	userId: string,
+	dateStr: string,
+	content: string,
+): Promise<void> {
 	const redis = getRedisClient();
 	if (redis) {
 		try {
-			await redis.set(`daily:${dateStr}`, content);
+			await redis.set(`user:${userId}:daily:${dateStr}`, content);
 		} catch (err: unknown) {
-			console.error("[Redis Write Error]:", err);
+			console.error("[Redis Daily Write Error]:", err);
 		}
 	}
 
 	try {
-		await ensureDirectoryExists(DAILY_DIR);
-		const filePath = path.join(DAILY_DIR, `${dateStr}.md`);
+		const userDailyDir = IS_VERCEL
+			? path.resolve("/tmp", "users", userId, "daily")
+			: path.resolve(MEMORY_DIR, "users", userId, "daily");
+		await ensureDirectoryExists(userDailyDir);
+		const filePath = path.join(userDailyDir, `${dateStr}.md`);
 		await fs.writeFile(filePath, content, "utf-8");
 	} catch (_err) {
 		// Ignore local write errors in Vercel if Redis succeeds
 	}
 }
 
-export async function getRecentLogs(days: number = 3): Promise<string[]> {
+// @lat: [[memory#Daily Action Logs]]
+export async function getRecentLogs(
+	userId: string,
+	days: number = 3,
+): Promise<string[]> {
 	const logs: string[] = [];
 	const now = new Date();
 
@@ -133,14 +207,16 @@ export async function getRecentLogs(days: number = 3): Promise<string[]> {
 			day: "2-digit",
 		});
 		const dateStr = formatter.format(targetDate);
-		const log = await readDailyLog(dateStr);
+		const log = await readDailyLog(userId, dateStr);
 		logs.push(log);
 	}
 
 	return logs;
 }
 
-export async function resolveCurrentHp(recentLogs: string[]): Promise<number> {
+export async function resolveCurrentHp(
+	recentLogs: string[],
+): Promise<number> {
 	for (const log of recentLogs) {
 		const match = log.match(/HP:\s*(\d)/i);
 		if (match?.[1]) {
@@ -150,22 +226,35 @@ export async function resolveCurrentHp(recentLogs: string[]): Promise<number> {
 	return 3;
 }
 
-export async function appendPlannedTask(dateStr: string, taskText: string) {
-	let content = await readDailyLog(dateStr);
+// @lat: [[memory#Daily Action Logs]]
+export async function appendPlannedTask(
+	userId: string,
+	dateStr: string,
+	taskText: string,
+) {
+	let content = await readDailyLog(userId, dateStr);
 
 	const taskLine = `- [ ] ${taskText.trim()}\n`;
 
 	if (content.includes("## Planned Tasks")) {
-		content = content.replace("## Planned Tasks\n", `## Planned Tasks\n${taskLine}`);
+		content = content.replace(
+			"## Planned Tasks\n",
+			`## Planned Tasks\n${taskLine}`,
+		);
 	} else {
 		content += `\n## Planned Tasks\n${taskLine}`;
 	}
 
-	await saveDailyLog(dateStr, content);
+	await saveDailyLog(userId, dateStr, content);
 }
 
-export async function appendRawUserLog(dateStr: string, text: string) {
-	let content = await readDailyLog(dateStr);
+// @lat: [[memory#Daily Action Logs]]
+export async function appendRawUserLog(
+	userId: string,
+	dateStr: string,
+	text: string,
+) {
+	let content = await readDailyLog(userId, dateStr);
 
 	const timeStr = new Date().toLocaleTimeString("ja-JP", {
 		timeZone: "Asia/Tokyo",
@@ -184,7 +273,10 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 		const taskLine = `- [ ] ${taskBody}\n`;
 
 		if (content.includes("## Planned Tasks")) {
-			content = content.replace("## Planned Tasks\n", `## Planned Tasks\n${taskLine}`);
+			content = content.replace(
+				"## Planned Tasks\n",
+				`## Planned Tasks\n${taskLine}`,
+			);
 		} else {
 			content += `\n## Planned Tasks\n${taskLine}`;
 		}
@@ -210,17 +302,24 @@ export async function appendRawUserLog(dateStr: string, text: string) {
 		}
 	}
 
-	await saveDailyLog(dateStr, content);
+	await saveDailyLog(userId, dateStr, content);
 }
 
-export async function carryOverPendingTasks(yesterdayDateStr: string, todayDateStr: string): Promise<number> {
-	const yesterdayLog = await readDailyLog(yesterdayDateStr);
+// @lat: [[memory#Daily Action Logs]]
+export async function carryOverPendingTasks(
+	userId: string,
+	yesterdayDateStr: string,
+	todayDateStr: string,
+): Promise<number> {
+	const yesterdayLog = await readDailyLog(userId, yesterdayDateStr);
 	if (!yesterdayLog.includes("## Planned Tasks")) {
 		return 0;
 	}
 
 	// 前日の ## Planned Tasks セクションから未完了タスク（- [ ] ）を抽出
-	const tasksSectionMatch = yesterdayLog.match(/## Planned Tasks\n([\s\S]*?)(?=\n## |$)/);
+	const tasksSectionMatch = yesterdayLog.match(
+		/## Planned Tasks\n([\s\S]*?)(?=\n## |$)/,
+	);
 	if (!tasksSectionMatch?.[1]) {
 		return 0;
 	}
@@ -241,7 +340,7 @@ export async function carryOverPendingTasks(yesterdayDateStr: string, todayDateS
 		return 0;
 	}
 
-	let todayLog = await readDailyLog(todayDateStr);
+	let todayLog = await readDailyLog(userId, todayDateStr);
 	let carriedCount = 0;
 
 	for (const taskName of pendingTasks) {
@@ -249,7 +348,10 @@ export async function carryOverPendingTasks(yesterdayDateStr: string, todayDateS
 		if (!todayLog.includes(taskName)) {
 			const carriedTaskLine = `- [ ] ${taskName} (carried)\n`;
 			if (todayLog.includes("## Planned Tasks")) {
-				todayLog = todayLog.replace("## Planned Tasks\n", `## Planned Tasks\n${carriedTaskLine}`);
+				todayLog = todayLog.replace(
+					"## Planned Tasks\n",
+					`## Planned Tasks\n${carriedTaskLine}`,
+				);
 			} else {
 				todayLog += `\n## Planned Tasks\n${carriedTaskLine}`;
 			}
@@ -258,7 +360,7 @@ export async function carryOverPendingTasks(yesterdayDateStr: string, todayDateS
 	}
 
 	if (carriedCount > 0) {
-		await saveDailyLog(todayDateStr, todayLog);
+		await saveDailyLog(userId, todayDateStr, todayLog);
 	}
 
 	return carriedCount;
@@ -269,16 +371,20 @@ export type CompleteTaskResult =
 	| { status: "not_found" }
 	| { status: "multiple"; matches: string[] };
 
+// @lat: [[memory#Daily Action Logs]]
 export async function markTaskAsCompleted(
+	userId: string,
 	todayDateStr: string,
-	queryText: string
+	queryText: string,
 ): Promise<CompleteTaskResult> {
-	const todayLog = await readDailyLog(todayDateStr);
+	const todayLog = await readDailyLog(userId, todayDateStr);
 	if (!todayLog.includes("## Planned Tasks")) {
 		return { status: "not_found" };
 	}
 
-	const tasksSectionMatch = todayLog.match(/## Planned Tasks\n([\s\S]*?)(?=\n## |$)/);
+	const tasksSectionMatch = todayLog.match(
+		/## Planned Tasks\n([\s\S]*?)(?=\n## |$)/,
+	);
 	if (!tasksSectionMatch?.[1]) {
 		return { status: "not_found" };
 	}
@@ -309,20 +415,24 @@ export async function markTaskAsCompleted(
 	const targetTask = matchingTasks[0];
 	// 対象の - [ ] タスクを - [x] タスクに置換
 	const updatedLog = todayLog.replace(
-		new RegExp(`-\\s*\\[\\s*\\]\\s*${targetTask.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
-		`- [x] ${targetTask}`
+		new RegExp(
+			`-\\s*\\[\\s*\\]\\s*${targetTask.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+		),
+		`- [x] ${targetTask}`,
 	);
 
-	await saveDailyLog(todayDateStr, updatedLog);
+	await saveDailyLog(userId, todayDateStr, updatedLog);
 	return { status: "success", taskText: targetTask };
 }
 
+// @lat: [[memory#Daily Action Logs]]
 export async function appendSentMessage(
+	userId: string,
 	dateStr: string,
 	type: "Morning" | "Evening",
 	text: string,
 ) {
-	let content = await readDailyLog(dateStr);
+	let content = await readDailyLog(userId, dateStr);
 
 	const timeStr = new Date().toLocaleTimeString("ja-JP", {
 		timeZone: "Asia/Tokyo",
@@ -343,5 +453,158 @@ export async function appendSentMessage(
 		content += `\n${sectionHeader}\n${sentLine}`;
 	}
 
-	await saveDailyLog(dateStr, content);
+	await saveDailyLog(userId, dateStr, content);
+}
+
+// --- FSM STATE & DISCIPLINE SCORE MANAGEMENT ---
+
+export type FsmState =
+	| "IDLE"
+	| "PENDING"
+	| "SCHEDULED"
+	| "EXECUTING"
+	| "REPORTING"
+	| "ESCAPED";
+
+export interface FsmStateData {
+	state: FsmState;
+	metadata?: {
+		taskText?: string;
+		targetStartTime?: string; // format: "20:00"
+		targetDuration?: number; // in minutes
+		proofDefinition?: string;
+		targetDateStr?: string;
+		warningSent?: boolean;
+		reportingDeadline?: string; // ISO String
+	};
+}
+
+const localStateCache = new Map<string, FsmStateData>();
+const localScoreCache = new Map<string, number>();
+
+// @lat: [[memory#Daily Action Logs]]
+export async function getUserState(userId: string): Promise<FsmStateData> {
+	const redis = getRedisClient();
+	if (redis) {
+		try {
+			const data = await redis.get<FsmStateData>(`user:${userId}:state`);
+			if (data) return data;
+		} catch (err) {
+			console.error("[Redis Get State Error]:", err);
+		}
+	}
+	return localStateCache.get(userId) || { state: "IDLE" };
+}
+
+// @lat: [[memory#Daily Action Logs]]
+export async function setUserState(
+	userId: string,
+	state: FsmState,
+	metadata?: FsmStateData["metadata"],
+): Promise<void> {
+	const redis = getRedisClient();
+	const stateData: FsmStateData = { state, metadata };
+	localStateCache.set(userId, stateData);
+	if (redis) {
+		try {
+			await redis.set(`user:${userId}:state`, stateData);
+		} catch (err) {
+			console.error("[Redis Set State Error]:", err);
+		}
+	}
+
+	// Mirror to daily log status for visibility
+	const today = getTodayDateString();
+	try {
+		let log = await readDailyLog(userId, today);
+		if (log.includes("State:")) {
+			log = log.replace(
+				/State:\s*\w+[\s\S]*?(?=\n##|$)/,
+				`State: ${state}${metadata ? `\nMetadata: ${JSON.stringify(metadata)}` : ""}`,
+			);
+		} else {
+			log = log.replace(
+				"## Status\n",
+				`## Status\nState: ${state}${metadata ? `\nMetadata: ${JSON.stringify(metadata)}` : ""}\n`,
+			);
+		}
+		await saveDailyLog(userId, today, log);
+	} catch (err) {
+		console.error("[Mirror FSM State to Daily Log Error]:", err);
+	}
+}
+
+// @lat: [[memory#Daily Action Logs]]
+export async function getDisciplineScore(userId: string): Promise<number> {
+	const redis = getRedisClient();
+	if (redis) {
+		try {
+			const score = await redis.get<number>(`user:${userId}:score`);
+			if (score !== null && score !== undefined) return score;
+		} catch (err) {
+			console.error("[Redis Get Score Error]:", err);
+		}
+	}
+	return localScoreCache.get(userId) ?? 100;
+}
+
+// @lat: [[memory#Daily Action Logs]]
+export async function updateDisciplineScore(
+	userId: string,
+	delta: number,
+): Promise<number> {
+	const current = await getDisciplineScore(userId);
+	const updated = Math.max(0, Math.min(100, current + delta));
+	localScoreCache.set(userId, updated);
+	const redis = getRedisClient();
+	if (redis) {
+		try {
+			await redis.set(`user:${userId}:score`, updated);
+		} catch (err) {
+			console.error("[Redis Set Score Error]:", err);
+		}
+	}
+
+	// Mirror to daily log
+	const today = getTodayDateString();
+	try {
+		let log = await readDailyLog(userId, today);
+		if (log.includes("Discipline Score:")) {
+			log = log.replace(
+				/Discipline Score:\s*\d+/,
+				`Discipline Score: ${updated}`,
+			);
+		} else {
+			log = log.replace(
+				"## Status\n",
+				`## Status\nDiscipline Score: ${updated}\n`,
+			);
+		}
+		await saveDailyLog(userId, today, log);
+	} catch (err) {
+		console.error("[Mirror Score to Daily Log Error]:", err);
+	}
+
+	return updated;
+}
+
+// @lat: [[memory#Upstash Redis Store]]
+export async function checkAndMarkEventProcessed(
+	eventId: string,
+): Promise<boolean> {
+	const url = process.env.UPSTASH_REDIS_REST_URL;
+	const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+	if (url && token && url !== "your_upstash_redis_rest_url_here") {
+		const redis = new Redis({ url, token });
+		try {
+			const result = await redis.set(`event:${eventId}:processed`, "true", {
+				nx: true,
+				ex: 300,
+			});
+			return result === null || result === undefined; // If null, it means nx condition failed (already exists)
+		} catch (err) {
+			console.error("[Redis Idempotency Error]:", err);
+		}
+	}
+	return false;
 }

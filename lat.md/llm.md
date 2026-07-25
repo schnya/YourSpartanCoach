@@ -1,0 +1,17 @@
+# LLM Integration
+
+Google Gemini API を活用し、ユーザーの状態に応じた動的な伴走メッセージやタスク優先度の分析を生成する LLM 連携レイヤーです。
+
+[[src/services/llm.ts]] および [[src/services/contextBuilder.ts]] を中心に、推論クライアントとコンテキスト構築機能が実装されています。
+
+## State-Adaptive Prompting
+
+ユーザーの直近のエネルギー状態（HP）や FSM 状態に合わせて、プロンプトのトーンやタスク合格ラインを動的に変更する仕組みです。
+
+[[src/services/contextBuilder.ts#buildSpartanPrompt]] にて、現在の FSM 状態（IDLE/PENDING/SCHEDULED/EXECUTING/REPORTING/ESCAPED）に対応する専用の軽量サブプロンプト（Morning, Warning, Proof, Penalty）をマスターシステムプロンプトに動的注入し、指示の緩み（Instruction Drift）を防止する Task Routing 構造を提供します。
+
+## Gemini API Client
+
+Google の SDK を用いて、Gemini モデルに対して単一テキストまたはマルチモーダル（画像＋テキスト）の推論要求を送り、結果を受け取るためのインターフェースです。
+
+[[src/services/llm.ts#generateMessage]] は `@google/genai` の `GoogleGenAI` クライアントを使用して `gemini-3.1-flash-lite` にリクエストを送信し、画像付き証拠の検証時には [[src/services/llm.ts#generateMessageMultimodal]] を介して `gemini-2.5-flash` などに画像バイナリと評価基準を投入して厳密な合格・不合格判定（PASS/FAIL）を実施します。

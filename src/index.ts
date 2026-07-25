@@ -12,6 +12,7 @@ app.get("/", (c) => {
 	return c.text("LINE Companion Bot is running!");
 });
 
+// @lat: [[routing#Routing System]]
 app.route("/webhook", webhookApp);
 app.route("/cron", cronApp);
 
