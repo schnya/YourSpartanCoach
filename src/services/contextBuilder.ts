@@ -8,7 +8,7 @@ import {
 	SUB_PROMPT_MORNING,
 	SUB_PROMPT_PENALTY,
 	SUB_PROMPT_PROOF,
-	SUB_PROMPT_WARNING,
+	SUB_PROMPT_SCHEDULED,
 } from "./spartanPrompts.js";
 
 // @lat: [[llm#State-Adaptive Prompting]]
@@ -54,7 +54,7 @@ export async function buildSpartanPrompt(
 	if (state === "IDLE" || state === "PENDING") {
 		subPrompt = SUB_PROMPT_MORNING;
 	} else if (state === "SCHEDULED" || state === "EXECUTING") {
-		subPrompt = SUB_PROMPT_WARNING;
+		subPrompt = SUB_PROMPT_SCHEDULED;
 	} else if (state === "REPORTING") {
 		subPrompt = SUB_PROMPT_PROOF;
 	} else if (state === "ESCAPED") {

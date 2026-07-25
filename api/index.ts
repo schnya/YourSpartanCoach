@@ -6,7 +6,7 @@ import webhookApp from "../src/routes/webhook.js";
 const app = new Hono();
 
 app.get("/", (c) => {
-  return c.text("LINE Companion Bot is running!");
+  return c.text("ARES (Automated Rigorous Execution System) is running!");
 });
 
 app.route("/webhook", webhookApp);

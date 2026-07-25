@@ -476,6 +476,9 @@ export interface FsmStateData {
 		targetDateStr?: string;
 		warningSent?: boolean;
 		reportingDeadline?: string; // ISO String
+		silentEscapedReason?: string;
+		slicedTask?: boolean;
+		physicalPostponeCount?: number;
 	};
 }
 

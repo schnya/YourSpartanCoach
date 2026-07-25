@@ -8,7 +8,7 @@ dotenv.config();
 const app = new Hono();
 
 app.get("/", (c) => {
-	return c.text("LINE Companion Bot is running on Deno!");
+	return c.text("ARES (Automated Rigorous Execution System) is running on Deno!");
 });
 
 // @lat: [[routing#Routing System]]

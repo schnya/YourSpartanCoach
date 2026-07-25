@@ -1,7 +1,7 @@
 {
-  "name": "line-companion-bot",
+  "name": "ares",
   "version": "1.0.0",
-  "description": "LINE Companion Bot lowering the standard for a 100-point day",
+  "description": "ARES (Automated Rigorous Execution System) - Spartan AI Life Coach LINE Bot",
   "main": "src/index.ts",
   "type": "module",
   "scripts": {

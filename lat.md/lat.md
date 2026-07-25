@@ -1,6 +1,6 @@
-# Shunya as AI Knowledge Graph
+# ARES Knowledge Graph
 
-LINE 伴走 Bot (line-companion-bot) のシステム構成、メモリ設計、および各サービス・ルーティング定義を管理するナレッジグラフです。
+スパルタ型AIライフコーチ ARES (Automated Rigorous Execution System) のシステム構成、メモリ設計、および各サービス・ルーティング定義を管理するナレッジグラフです。
 
 本プロジェクトの設計理念と各機能の詳細を、以下のセクションに整理しています。
 

@@ -144,25 +144,68 @@ webhookApp.post("/", async (c) => {
 								"【警告】現在は実績報告を受け付ける状態ではない。実行中のタスクが存在しない。";
 						}
 					} else if (data === "action=sos") {
-						// SOS Excuse assessment
-						const prompt = await buildSpartanPrompt(
-							userId,
-							stateData.state,
-							stateData.metadata,
-						);
-						const systemMsg = await generateMessage(
-							`${prompt}\n\nユーザーが「SOS・予定変更」を要求しています。甘えを断固として拒絶し、規律を守るよう言い渡す短い警告メッセージを出力してください。`,
-						);
-						replyText =
-							systemMsg ||
-							"予定変更など認めない。計画に従って行動することのみが唯一の正義だ。";
+						// Send Quick Reply 2-Branch Query without debate
+						await client.replyMessage({
+							replyToken,
+							messages: [
+								{
+									type: "text",
+									text: "【SOS確認】動けない理由はどちらだ？\n① 気が重い／怖い（心理的抵抗）\n② 物理的に無理（体調不良・急用）",
+									quickReply: {
+										items: [
+											{
+												type: "action",
+												action: {
+													type: "postback",
+													label: "① 気が重い/怖い",
+													data: "action=sos_mental",
+													displayText: "① 気が重い/怖い",
+												},
+											},
+											{
+												type: "action",
+												action: {
+													type: "postback",
+													label: "② 物理的に無理",
+													data: "action=sos_physical",
+													displayText: "② 物理的に無理",
+												},
+											},
+										],
+									},
+								},
+							],
+						});
+						continue;
+					} else if (data === "action=sos_mental") {
+						// Option 1: Mental/Fear -> Zero debate, immediate 10-minute slice command
+						const deadline = new Date();
+						deadline.setMinutes(deadline.getMinutes() + 10);
+						await setUserState(userId, "REPORTING", {
+							...stateData.metadata,
+							reportingDeadline: deadline.toISOString(),
+							slicedTask: true,
+						});
+
+						replyText = "【心理的抵抗検知】怖たままでええ。完璧を捨て、死なないサイズ（10分間 / 1行）に刻んで今すぐ着手せよ。10分以内に1行だけ成果物を提出せよ。";
+					} else if (data === "action=sos_physical") {
+						// Option 2: Physical Constraint -> Log postpone count and reset to IDLE
+						const currentPostpone = stateData.metadata?.physicalPostponeCount || 0;
+						await setUserState(userId, "IDLE", {
+							...stateData.metadata,
+							physicalPostponeCount: currentPostpone + 1,
+						});
+
+						replyText = `【予定延期承認】物理的制約による延期を1回として記録した。（累計延期回数: ${currentPostpone + 1}回）。無理は禁物だ。十分に静養・調整し、次回07:00の計画入力から再開せよ。`;
 					} else if (data === "action=status") {
 						const score = await getDisciplineScore(userId);
+						const postponeCount = stateData.metadata?.physicalPostponeCount || 0;
 						replyText = `【規律ステータス】
 現在の状態: ${stateData.state}
 規律スコア: ${score} / 100
 進行中のタスク: ${stateData.metadata?.taskText || "なし"}
-成果物の定義: ${stateData.metadata?.proofDefinition || "なし"}`;
+成果物の定義: ${stateData.metadata?.proofDefinition || "なし"}
+物理的延期累計: ${postponeCount}回`;
 					}
 
 					if (replyText) {

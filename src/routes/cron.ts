@@ -5,6 +5,7 @@ import { generateMessage } from "../services/llm.js";
 import {
 	appendSentMessage,
 	carryOverPendingTasks,
+	checkAndMarkEventProcessed,
 	getDisciplineScore,
 	getTodayDateString,
 	getUserState,
@@ -114,40 +115,29 @@ cronApp.get("/monitor", async (c) => {
 			stateData.state === "SCHEDULED" &&
 			stateData.metadata?.targetStartTime
 		) {
-			// Check if past scheduled start time + 5 minutes
 			const [hours, minutes] = stateData.metadata.targetStartTime
 				.split(":")
 				.map(Number);
 			const targetTime = new Date();
 			targetTime.setHours(hours, minutes, 0, 0);
 
-			// If scheduled time was for yesterday and still SCHEDULED, mark as escaped
 			const limitTime = new Date(targetTime.getTime() + 5 * 60 * 1000); // T + 5min
 
 			if (now > limitTime) {
 				console.log(
-					`[FSM Delinquent Start Alert]: User=${userId} missed start. Transitioning SCHEDULED -> ESCAPED`,
+					`[FSM Delinquent Start Log]: User=${userId} missed start. Non-chase policy: recording silent ESCAPED transition.`,
 				);
 
-				// Decrement score
-				await updateDisciplineScore(userId, -10);
-				await setUserState(userId, "ESCAPED", stateData.metadata);
+				// Silent transition to ESCAPED without sending chase LINE push messages
+				await setUserState(userId, "ESCAPED", {
+					...stateData.metadata,
+					silentEscapedReason: "LATE_START",
+				});
 
-				const prompt = await buildSpartanPrompt(
-					userId,
-					"ESCAPED",
-					stateData.metadata,
-				);
-				const warningMsg = await generateMessage(
-					`${prompt}\n\nタスク「${stateData.metadata.taskText}」の開始予定時刻（${stateData.metadata.targetStartTime}）から5分以上が経過しました。
-行動開始されなかったため、誓約ペナルティ発動と規律スコア10点減点、およびリカバリーアクションを要求する激しいツッコミ警告を出力してください。`,
-				);
-
-				await sendPushMessage(userId, warningMsg);
 				return c.json({
 					success: true,
-					triggered: "late_start",
-					message: warningMsg,
+					triggered: "late_start_silent",
+					msg: "Silent transition executed per Non-Chase policy",
 				});
 			}
 		}
@@ -156,32 +146,23 @@ cronApp.get("/monitor", async (c) => {
 			stateData.state === "REPORTING" &&
 			stateData.metadata?.reportingDeadline
 		) {
-			// Check if past reporting deadline
 			const deadline = new Date(stateData.metadata.reportingDeadline);
 
 			if (now > deadline) {
 				console.log(
-					`[FSM Delinquent Proof Alert]: User=${userId} missed proof deadline. Transitioning REPORTING -> ESCAPED`,
+					`[FSM Delinquent Proof Log]: User=${userId} missed proof deadline. Non-chase policy: recording silent ESCAPED transition.`,
 				);
 
-				await updateDisciplineScore(userId, -10);
-				await setUserState(userId, "ESCAPED", stateData.metadata);
+				// Silent transition to ESCAPED without sending chase LINE push messages
+				await setUserState(userId, "ESCAPED", {
+					...stateData.metadata,
+					silentEscapedReason: "LATE_PROOF",
+				});
 
-				const prompt = await buildSpartanPrompt(
-					userId,
-					"ESCAPED",
-					stateData.metadata,
-				);
-				const penaltyMsg = await generateMessage(
-					`${prompt}\n\n実績報告期限（${deadline.toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo" })}）を徒過しました。
-成果物未提出によるコミットメント違反の確定、ペナルティ決済処理の実行、規律スコア10点減点を宣告し、即時リカバリー行動を迫るメッセージを出力してください。`,
-				);
-
-				await sendPushMessage(userId, penaltyMsg);
 				return c.json({
 					success: true,
-					triggered: "late_proof",
-					message: penaltyMsg,
+					triggered: "late_proof_silent",
+					msg: "Silent transition executed per Non-Chase policy",
 				});
 			}
 		}
@@ -198,26 +179,47 @@ cronApp.get("/monitor", async (c) => {
 	}
 });
 
-// 夜の Cron (/cron/evening) - 振り返り分析
+// 夜の Cron (/cron/evening) - 振り返り分析 & 一括査定 (Idempotent)
 cronApp.get("/evening", async (c) => {
 	try {
 		const userId = process.env.LINE_USER_ID || "default_user";
 		const today = getTodayDateString();
 
-		// If state is not IDLE at evening, they get a penalty check
+		// Idempotency check for evening cron execution
+		const idempotencyKey = `cron:evening:${today}:${userId}`;
+		const isDuplicate = await checkAndMarkEventProcessed(idempotencyKey);
+		if (isDuplicate) {
+			console.warn(
+				`[Cron Evening Warning]: Idempotency check triggered. Already executed for today (${today}).`,
+			);
+			return c.json({
+				success: true,
+				duplicate: true,
+				msg: "Evening cron already processed for today.",
+			});
+		}
+
+		// If state is not IDLE at evening, batch penalty processing occurs
 		const stateData = await getUserState(userId);
 		if (stateData.state !== "IDLE") {
 			console.log(
-				`[FSM Evening Failure]: User=${userId} was in state ${stateData.state} at night.`,
+				`[FSM Evening Failure]: User=${userId} was in state ${stateData.state} at night. Applying batch penalty.`,
 			);
 			await updateDisciplineScore(userId, -10);
-			await setUserState(userId, "IDLE"); // Force reset for next day
+			await setUserState(userId, "IDLE"); // Reset state for next day
 		}
 
 		const score = await getDisciplineScore(userId);
+		const postponeCount = stateData.metadata?.physicalPostponeCount || 0;
+
+		let patternNotice = "";
+		if (postponeCount >= 2) {
+			patternNotice = `\n【パターン警戒】物理的延期が累計${postponeCount}回記録されています。体調管理の欠陥か、無意識な逃避の自己偽装の疑いがあります。`;
+		}
 
 		const eveningMsg = `【夜の総括】本日もお疲れ様でした。
 現在の規律スコア: ${score} / 100
+物理的延期累計: ${postponeCount}回${patternNotice}
 明日も07:00に計画入力を受け付けます。本日の進捗はすべてログに記録されました。明日はさらに高い規律を目指しましょう。`;
 
 		await appendSentMessage(userId, today, "Evening", eveningMsg);
