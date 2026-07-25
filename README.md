@@ -61,21 +61,21 @@ flowchart TD
   MemoryStore -->|設定・履歴の読込| LocalFiles
   
   MemoryStore -->|2. 未加工データ取得| ContextBuilder
-  ContextBuilder -->|3. プロンプト組み立て (HP考慮)| LLMService
+  ContextBuilder -->|"3. プロンプト組み立て (HP考慮)"| LLMService
   LLMService -->|4. 推論要求| GeminiAPI
   GeminiAPI -->|5. テキスト返却| LLMService
   LLMService -->|6. 返信/プッシュ送信| LineAPI
   LineAPI -->|メッセージ配信| User
   
-  %% Vercel Cron
-  VercelCron["Vercel Cron Job<br/>(朝 / 夜 / 定期プッシュ)"] -->|HTTP Trigger| WebhookHandler
+  %% Scheduled Cron
+  CronScheduler["Deno Deploy Cron Job<br/>(朝 / 夜 / 定期プッシュ)"] -->|HTTP Trigger| WebhookHandler
 ```
 
 ---
 
 ## 🛠️ 技術スタック
 
-* **Runtime**: Node.js v20+ / TypeScript
+* **Runtime**: Deno v2+ / TypeScript
 * **Web Framework**: Hono
   * 軽量かつエッジ/サーバーレス環境で高速動作し、型安全なルーティングを実現。
 * **Serverless Platform**: Vercel
