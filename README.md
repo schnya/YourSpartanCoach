@@ -1,137 +1,158 @@
-# LINE Companion Bot 🤖🌱
+# LLM-Powered State-Adaptive Companion Bot (LINE Bot)
 
-> **「タスク管理」ではなく「あなたの文脈に寄り添う生活の伴走者」を。**  
-> **Markdown とプロンプトを書き換えるだけで、自分好みの AI 伴走者を作れる LINE Bot テンプレートです。**
+LINE Messaging API と Google Gemini API を統合し、ユーザーのエネルギー状態（HP）やパーソナリティに適応して伴走する、ステートフルな LINE 伴走システムです。
 
----
-
-## 🌟 特徴・魅力
-
-1. **誰でも無料で即作成**
-   - LINE Messaging API (無料) と Google Gemini API (無料枠/激安) のキーを用意し、Vercel にデプロイするだけで自分だけの LINE Bot が完成します。
-2. **Markdown 編集だけで「人格・口調・価値観」を自由自在にカスタマイズ**
-   - `memory/USER_PROFILE.md` や `memory/patterns.md` を書き換えるだけで、**関西弁の気安い友達**、**穏やかなカウンセラー**、**スパルタコーチ**など、どんな人格・トーンにも変えられます。
-3. **合格ラインを下げてくれる優しさ**
-   - 世の中のツールのような「もっと頑張れ」ではなく、「今日は水飲んでPC開けたら100点」と最低勝利条件を提案し、挫折を防ぎます。
+単なる「タスク管理」ではなく、「ユーザーのコンテキストに寄り添う生活の支援」を目的とし、Markdown ベースのナレッジモデルとサーバーレス構成を組み合わせて実装されています。
 
 ---
 
-## 📐 アーキテクチャ
+## 🎯 プロジェクトの狙いとアピールポイント
+
+技術的なアピールポイントとして、以下の設計・実装に注力しています。
+
+1. **State-Adaptive（状態適応型）プロンプティング**
+   - ユーザーの会話や自己申告から「HP（1〜5）」を自動抽出して状態を管理。
+   - HP低下時には自動的にトーンを和らげ、タスクの合格ラインを引き下げるなど、LLM の出力振る舞いを動的に調整するコンテキスト構築ロジックを実装。
+2. **サーバーレス（Vercel）におけるステートフル制御**
+   - Ephemeral な Vercel Serverless Functions の制約を克服するため、**Upstash Redis** を用いたキャッシュ・セッションストレージ設計を採用。
+   - ローカル開発時はファイルシステム（Markdown 履歴）を使い、本番環境では Redis を優先する透過的なストレージ抽象化レイヤーを構築しています。
+3. **MarkdownベースのローカルRAG / Context Builder**
+   - `USER_PROFILE.md` や `patterns.md` に定義されたユーザー情報・行動ルールを解析し、直近3日間の行動ログとマージして Gemini に与える文脈を最適化する Context Builder サービスを設計。
+4. **Vercel Cron によるリアクティブ＆プロアクティブなプッシュ配信**
+   - Webhook による応答（受動的）だけでなく、定時・定期の行動チェックや振り返り（能動的）を Vercel Cron を用いてスケジューリング。
+
+---
+
+## 📐 システムアーキテクチャ
 
 ```mermaid
-flowchart LR
-  A["USER_PROFILE.md<br/>(あなたの性格・好み)"] --> D["Context Builder"]
-  B["daily/*.md<br/>(日々の生ログ・会話履歴)"] --> D
-  C["patterns.md<br/>(HP別の行動基準・トーン)"] --> D
-  D --> E["Gemini API Prompt"]
-  F["LINE Webhook"] --> E
-  E --> G["LINE Push / Reply Message"]
+flowchart TD
+  subgraph User_Touchpoint ["ユーザー接点"]
+    User["ユーザー (LINE client)"]
+  end
+
+  subgraph Messaging_Gateway ["メッセージングゲートウェイ"]
+    LineAPI["LINE Messaging API"]
+  end
+
+  subgraph App_Backend ["アプリケーションバックエンド (Vercel Serverless / Hono)"]
+    WebhookHandler["Webhook / API Endpoints"]
+    ContextBuilder["Context Builder"]
+    LLMService["Gemini API Service (@google/genai)"]
+    MemoryStore["Memory Store Manager"]
+  end
+
+  subgraph Persistence_Layer ["永続化・コンテキスト"]
+    Redis[("Upstash Redis (Production State)")]
+    LocalFiles["Local Markdown Files (Dev Mode / Config)<br/>- USER_PROFILE.md<br/>- patterns.md<br/>- daily/*.md"]
+  end
+
+  subgraph External_APIs ["外部サービス"]
+    GeminiAPI["Google Gemini API"]
+  end
+
+  %% Data Flow
+  User -->|メッセージ送信| LineAPI
+  LineAPI -->|Webhook HTTPS Post| WebhookHandler
+  
+  %% Cron triggers
+  WebhookHandler -->|1. コンテキスト取得依頼| MemoryStore
+  MemoryStore -->|読込/書込| Redis
+  MemoryStore -->|設定・履歴の読込| LocalFiles
+  
+  MemoryStore -->|2. 未加工データ取得| ContextBuilder
+  ContextBuilder -->|3. プロンプト組み立て (HP考慮)| LLMService
+  LLMService -->|4. 推論要求| GeminiAPI
+  GeminiAPI -->|5. テキスト返却| LLMService
+  LLMService -->|6. 返信/プッシュ送信| LineAPI
+  LineAPI -->|メッセージ配信| User
+  
+  %% Vercel Cron
+  VercelCron["Vercel Cron Job<br/>(朝 / 夜 / 定期プッシュ)"] -->|HTTP Trigger| WebhookHandler
 ```
-
----
-
-## 🎭 カスタマイズ例（Markdownを書き換えるだけ！）
-
-### パターンA: 関西弁の気安い伴走者（デフォルト）
-> 「おはよう。今日は大きく勝たんでいい日っぽい。まず水飲んで、10分だけ机に向かえたらそれで100点やで。」
-
-### パターンB: 褒めて伸ばす穏やかなカウンセラー
-> 「おはようございます。今日は少しお疲れ気味ですね。まずは深呼吸をして、好きな温かい飲み物を淹れられたらそれだけで満点ですよ。」
-
-### パターンC: ミニマリスト・静かな観察者
-> 「無駄な目標は捨てよう。今日やるべきことは1つだけ。コードを1行読む。それ以上は明日考えればいい。」
-
----
-
-## 🚀 5分でできる！自分用Botの作り方
-
-### 必要なもの
-- LINE Developer アカウント（[LINE Developers](https://developers.line.biz/) で無料作成）
-- Google AI Studio API Key（[Google AI Studio](https://aistudio.google.com/) で無料取得）
-- Vercel アカウント（[Vercel](https://vercel.com/) で無料作成）
-
-### ステップ 1: リポジトリの Fork / クローン
-```bash
-git clone https://github.com/your-username/line-companion-bot.git
-cd line-companion-bot
-pnpm install
-```
-
-### ステップ 2: 自分用のプロフィールを書く
-`memory/USER_PROFILE.sample.md` を参考に、`memory/USER_PROFILE.md` を作成して自分の性格や呼ばれ方、好みのトーンを書きます。
-
-```markdown
-# USER_PROFILE
-name: あなたの名前
-tone: 希望の口調（例: 優しい先輩、語尾に〜だにゃ、など）
-
-## 性格・傾向
-- 理想が高くパンクしやすい...
-```
-
-### ステップ 3: Vercel にデプロイ
-```bash
-npx vercel --prod
-```
-Vercel の設定画面で以下の環境変数をセットします：
-- `LINE_CHANNEL_ACCESS_TOKEN`
-- `LINE_CHANNEL_SECRET`
-- `LINE_USER_ID`
-- `GEMINI_API_KEY`
-
-### ステップ 4: LINE Developers に Webhook URL を登録
-LINE Webhook URL に `https://your-vercel-app.vercel.app/webhook` を設定し、有効化すれば完了です！
-
----
-
-## ⏰ メッセージ送信時間のカスタマイズ (`vercel.json`)
-
-デフォルトでは以下の時間（日本時間）に自動でLINEへメッセージが配信されます。
-
-| 種類 | 送信タイミング・目的 | デフォルト送信時間 (JST) | `vercel.json` 内の Cron 式 (UTC) |
-|---|---|---|---|
-| **朝の100点条件** | 今日を無理なく始めるための合格ライン提示 | **朝 08:00** | `0 23 * * *` (UTC 23:00) |
-| **タスク整理** | 送ったタスクを優先度順に並べ替え＆最初の一歩を整理 | **午前 09:30** | `30 0 * * *` (UTC 00:30) |
-| **コーチング・進捗問いかけ** | 「やることやってるか？」と40分おきに進捗と行動チェック | **10:00〜21:30 (40分おき)** | `0/40 1-12 * * *` (UTC 01:00〜12:40) |
-| **夜の振り返り** | 一日のできたこと・休めたことを承認して終了 | **夜 21:30** | `30 12 * * *` (UTC 12:30) |
-
-自分の生活リズムに合わせて時間を変えたい場合は、`vercel.json` の `schedule` （Cron式）を編集して再デプロイしてください。
-
-```json # vercel.json のCron設定例
-{
-  "crons": [
-    {
-      "path": "/cron/morning",
-      "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/cron/task-plan",
-      "schedule": "30 0 * * *"
-    },
-    {
-      "path": "/cron/accountability",
-      "schedule": "0/40 1-12 * * *"  // 日本時間 10:00〜21:40 の間 40分おき
-    },
-    {
-      "path": "/cron/evening",
-      "schedule": "30 12 * * *"
-    }
-  ]
-}
-```
-> ※ Vercel Cron は **UTC（協定世界時）** で指定する必要があります（日本時間から 9 時間引いた時間を設定してください）。
 
 ---
 
 ## 🛠️ 技術スタック
 
-- **Engine**: Node.js + Hono (TypeScript)
-- **Deployment**: Vercel (Serverless Functions + Vercel Cron)
-- **LLM**: Google Gemini API (`gemini-3.1-flash-lite`) via `@google/genai`
-- **Messaging**: LINE Messaging API (`@line/bot-sdk`)
+* **Runtime**: Node.js v20+ / TypeScript
+* **Web Framework**: Hono
+  * 軽量かつエッジ/サーバーレス環境で高速動作し、型安全なルーティングを実現。
+* **Serverless Platform**: Vercel
+  * Serverless Functions + Vercel Cron を活用したイベント駆動型実行モデル。
+* **Database / Cache**: Upstash Redis (Serverless Redis)
+  * コネクションプールを必要としない REST API 経由の接続（HTTP-based Redis client）により、サーバーレス環境でのコールドスタート耐性を向上。
+* **LLM Engine**: Google Gemini API (`gemini-3.1-flash-lite`) via `@google/genai`
+* **SDK / API Integration**: `@line/bot-sdk`
+
+---
+
+## 📂 主要なコード構成
+
+```text
+├── api/                  # Vercel Serverless 用のエントリーポイント
+├── src/
+│   ├── index.ts          # Hono アプリの初期化とルーティング定義
+│   ├── routes/           # Webhook および Cron トリガーのルートハンドラー
+│   └── services/
+│       ├── contextBuilder.ts # プロンプトテンプレートへのコンテキスト合成
+│       ├── llm.ts            # Gemini API クライアントと推論処理
+│       └── memoryStore.ts    # Redis とローカルファイルを抽象化した永続化ロジック
+├── memory/               # ローカル保存用 Markdown データベース
+│   ├── USER_PROFILE.md   # ユーザープロフィール・ペルソナ
+│   ├── patterns.md       # HP別のコーチング基準・行動ポリシー
+│   └── daily/            # 日々の生ログやタスク進捗ファイル
+└── vercel.json           # Vercel Cron およびルーティング構成ファイル
+```
+
+---
+
+## 🚀 開発環境のセットアップ
+
+本リポジトリは TypeScript と pnpm を用いて管理されています。
+
+### 1. リポジトリの準備
+```bash
+git clone <repository-url>
+cd line-companion-bot
+pnpm install
+```
+
+### 2. 環境変数の設定
+`.env.example` を参考に、プロジェクトルートに `.env` もしくは `.env.local` を作成し、各クレデンシャルを記述します。
+
+```env
+# Server Config
+PORT=3000
+
+# LINE Credentials
+LINE_CHANNEL_ACCESS_TOKEN=your_token
+LINE_CHANNEL_SECRET=your_secret
+LINE_USER_ID=your_user_id
+
+# Google Gemini API
+GEMINI_API_KEY=your_gemini_key
+
+# Upstash Redis (Vercel環境での状態永続化用)
+UPSTASH_REDIS_REST_URL=your_redis_url
+UPSTASH_REDIS_REST_TOKEN=your_redis_token
+```
+
+### 3. ローカル実行
+```bash
+pnpm dev
+```
+ローカルサーバーが起動します。外部からの Webhook 受信を確認するには `ngrok` や `localtunnel` を介してローカルポート（デフォルト: 3000）を公開してください。
+
+### 4. Vercel へのデプロイ
+Vercel CLI を使用して本番デプロイを行います。
+```bash
+npx vercel --prod
+```
+環境変数 `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_USER_ID`, `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` を Vercel のプロジェクト設定で設定します。
 
 ---
 
 ## 📄 ライセンス
 
-MIT License - ご自由にフォーク・改造してお使いください！
+MIT License
