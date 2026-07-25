@@ -60,6 +60,8 @@ export async function buildSpartanPrompt(
 			.map((t, i) => `[${i + 1}] ${t.title}`)
 			.join("\n");
 		taskContext = `\n\n# Current Google Tasks\n${formatted}`;
+	} else {
+		taskContext = "\n\n# Current Google Tasks\n(現在登録されたタスクはありません)";
 	}
 
 	return `${prompt}${taskContext}\n\n---\n\n${subPrompt}`;
