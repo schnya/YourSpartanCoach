@@ -26,11 +26,11 @@ LINE Bot におけるセッション状態や会話履歴、タスク情報を�
 
 ユーザーの外部タスク管理ツール（Google Tasks）と ARES FSM 状態を非同期・非ブロッキングで連携する構造について説明します。
 
-[[src/services/googleTasks.ts]] において、OAuth2 経由で Access Token を取得し、`createGoogleTask` で50分ブロックタスクを登録、`completeGoogleTask` で合格した成果物のタスクを完了状態に更新します。`memoryStore` を唯一の正（Ground Truth）とし、Google API の障害やトークン失効時も LINE Webhook や FSM 状態遷移を一切ブロックしない「ベストエフォート同期」を担保します。
+[[src/services/googleTasks.ts]] において `listGoogleTasks` で未完了タスクを取得し、朝の Cron 発動時に LINE 提示します。承認時は `findMatchingGoogleTask` で既存タスク ID を照合・バインドし二重作成を防ぎます。`completeGoogleTask` で合格したタスクを完了更新します。
 
 ### Plan Approval Sync
 
-朝の計画が承認され FSM が `PENDING` から `SCHEDULED` へ遷移するタイミングで、[[src/handlers/messageHandlers.ts#handleMorningPlanMessage]] が `createGoogleTask` を fire-and-forget で呼び出します。作成されたタスク ID は `googleTaskId` として [[src/services/memory/fsmStore.ts#FsmStateData]] の metadata に保存され、後続の完了同期で再利用されます。
+朝の計画承認時に既存 Google Task と一致した場合はその `googleTaskId` を FSM metadata にバインドし、新規タスクの場合のみ `createGoogleTask` を fire-and-forget 実行します。データは [[src/services/memory/fsmStore.ts#FsmStateData]] に保存され、後続の完了同期で再利用されます。
 
 ### Proof Approval Completion
 

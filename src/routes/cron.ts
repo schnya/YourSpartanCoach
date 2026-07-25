@@ -1,6 +1,7 @@
 import { messagingApi } from "@line/bot-sdk";
 import { Hono } from "hono";
 import { buildSpartanPrompt } from "../services/contextBuilder.js";
+import { listGoogleTasks } from "../services/googleTasks.js";
 import { generateMessage } from "../services/llm.js";
 import {
 	appendSentMessage,
@@ -68,14 +69,30 @@ cronApp.get("/morning", async (c) => {
 		const carriedTasks = await carryOverPendingTasks(userId, today);
 		const carriedCount = carriedTasks.length;
 
-		// 2. Transition state to PENDING
+		// 2. Fetch uncompleted Google Tasks
+		const googleTasks = await listGoogleTasks();
+
+		// 3. Transition state to PENDING
 		await setUserState(userId, "PENDING");
 
-		// 3. Build spartan morning prompt
+		// 4. Build spartan morning prompt
 		const prompt = await buildSpartanPrompt(userId, "PENDING");
-		const morningMsg = await generateMessage(
-			`${prompt}\n\n朝07:00になりました。今日のタスク計画（行動内容、開始時間、所要時間、成果基準）の入力を要求する規律メッセージを出力してください。キャリーオーバーしたタスク件数：${carriedCount}件。`,
-		);
+
+		let morningPromptInstruction = "";
+		if (googleTasks.length > 0) {
+			const formattedTasks = googleTasks
+				.map(
+					(t, index) =>
+						`[T${index + 1}] ID:${t.id} タイトル:${t.title}${t.notes ? ` (メモ:${t.notes})` : ""}`,
+				)
+				.join("\n");
+
+			morningPromptInstruction = `${prompt}\n\n朝07:00になりました。ユーザーの Google Tasks に以下の未完了タスクがあります:\n${formattedTasks}\n\n上記タスクを50分ブロック（推奨開始時刻、所要時間50分、測定可能な成果物定義）に整理して提案し、ユーザーへ本日の確定入力を要求する規律メッセージを出力してください。キャリーオーバータスク: ${carriedCount}件。`;
+		} else {
+			morningPromptInstruction = `${prompt}\n\n朝07:00になりました。今日のタスク計画（行動内容、開始時間、所要時間、成果基準）の入力を要求する規律メッセージを出力してください。キャリーオーバーしたタスク件数：${carriedCount}件。`;
+		}
+
+		const morningMsg = await generateMessage(morningPromptInstruction);
 
 		await appendSentMessage(userId, today, "Morning", morningMsg);
 		await sendPushMessage(userId, morningMsg);
@@ -85,6 +102,7 @@ cronApp.get("/morning", async (c) => {
 			type: "morning",
 			message: morningMsg,
 			carriedTasks: carriedCount,
+			googleTasksCount: googleTasks.length,
 		});
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);

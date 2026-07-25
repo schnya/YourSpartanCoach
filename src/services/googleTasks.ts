@@ -1,9 +1,16 @@
-// @lat: [[memory#Google Tasks Integration]]
 export interface GoogleTaskParams {
 	taskText: string;
 	targetStartTime?: string;
 	targetDuration?: number;
 	proofDefinition?: string;
+}
+
+export interface GoogleTaskItem {
+	id: string;
+	title: string;
+	notes?: string;
+	due?: string;
+	status?: string;
 }
 
 export async function getAccessToken(): Promise<string | null> {
@@ -135,4 +142,66 @@ export async function completeGoogleTask(taskId: string): Promise<boolean> {
 		console.error("[Google Tasks Complete Exception]:", msg);
 		return false;
 	}
+}
+
+export async function listGoogleTasks(): Promise<GoogleTaskItem[]> {
+	try {
+		const token = await getAccessToken();
+		if (!token) return [];
+
+		const listId = process.env.GOOGLE_TASKS_LIST_ID || "@default";
+		const res = await fetch(
+			`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(listId)}/tasks?showCompleted=false&showHidden=false`,
+			{
+				method: "GET",
+				headers: {
+					Authorization: `Bearer ${token}`,
+				},
+			},
+		);
+
+		if (!res.ok) {
+			const errText = await res.text();
+			console.error(
+				`[Google Tasks List Error]: HTTP ${res.status} - ${errText}`,
+			);
+			return [];
+		}
+
+		const data = (await res.json()) as { items?: GoogleTaskItem[] };
+		return data.items || [];
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.error("[Google Tasks List Exception]:", msg);
+		return [];
+	}
+}
+
+export function findMatchingGoogleTask(
+	targetText: string,
+	googleTaskIdFromLlm: string | undefined,
+	existingTasks: GoogleTaskItem[],
+): GoogleTaskItem | null {
+	if (!existingTasks.length) return null;
+
+	if (googleTaskIdFromLlm) {
+		const foundById = existingTasks.find((t) => t.id === googleTaskIdFromLlm);
+		if (foundById) return foundById;
+	}
+
+	const normalizedTarget = targetText.trim().toLowerCase();
+
+	for (const task of existingTasks) {
+		if (!task.title) continue;
+		const normalizedTitle = task.title.trim().toLowerCase();
+		if (
+			normalizedTarget === normalizedTitle ||
+			normalizedTarget.includes(normalizedTitle) ||
+			normalizedTitle.includes(normalizedTarget)
+		) {
+			return task;
+		}
+	}
+
+	return null;
 }

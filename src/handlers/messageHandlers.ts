@@ -3,6 +3,8 @@ import { buildSpartanPrompt } from "../services/contextBuilder.js";
 import {
 	completeGoogleTask,
 	createGoogleTask,
+	findMatchingGoogleTask,
+	listGoogleTasks,
 } from "../services/googleTasks.js";
 import { generateMessage, generateMessageMultimodal } from "../services/llm.js";
 import {
@@ -205,18 +207,28 @@ export async function handleMorningPlanMessage(
 	client: messagingApi.MessagingApiClient,
 ) {
 	const spartanPrompt = await buildSpartanPrompt(userId, "PENDING");
-	const assessmentPrompt = `${spartanPrompt}
+	const existingGoogleTasks = await listGoogleTasks();
 
+	let taskContextStr = "";
+	if (existingGoogleTasks.length > 0) {
+		const formatted = existingGoogleTasks
+			.map((t) => `ID: "${t.id}" タイトル: "${t.title}"`)
+			.join("\n");
+		taskContextStr = `\n現在 Google Tasks にある未完了タスク一覧:\n${formatted}\n`;
+	}
+
+	const assessmentPrompt = `${spartanPrompt}
+${taskContextStr}
 ユーザーの入力: "${text}"
 
-上記入力について審査を行ってください。
+上記入力について審査を行ってください。ユーザーの計画が上記の Google Tasks 一覧内のタスクに該当する場合は、その googleTaskId も抽出してください。
 必ず以下のフォーマットのいずれかで出力してください。余計な説明文は一切含めないでください。
 
 【却下の場合】
 REJECT: <ユーザーへの却下メッセージ>
 
 【承認の場合】
-APPROVE: {"task": "<タスク内容>", "startTime": "<開始時刻 HH:MM>", "duration": <所要時間（数値、分）>, "proof": "<合格とする証拠物の定義>"}
+APPROVE: {"task": "<タスク内容>", "startTime": "<開始時刻 HH:MM>", "duration": <所要時間（数値、分）>, "proof": "<合格とする証拠物の定義>", "googleTaskId": "<該当するGoogle TaskのID（該当ある場合のみ、なければ省略またはnull）>"}
 MESSAGE: <ユーザーへの承認・激励メッセージ>`;
 
 	const result = await generateMessage(assessmentPrompt);
@@ -230,34 +242,51 @@ MESSAGE: <ユーザーへの承認・激励メッセージ>`;
 				const message = match[2].trim();
 				const todayStr = getTodayDateString();
 
+				// コード側でのセーフティネット照合（LLM依存の排除）
+				const matchedTask = findMatchingGoogleTask(
+					meta.task,
+					meta.googleTaskId,
+					existingGoogleTasks,
+				);
+
+				const boundGoogleTaskId = matchedTask ? matchedTask.id : undefined;
+
 				await setUserState(userId, "SCHEDULED", {
 					taskText: meta.task,
 					targetStartTime: meta.startTime,
 					targetDuration: meta.duration,
 					proofDefinition: meta.proof,
 					targetDateStr: todayStr,
+					googleTaskId: boundGoogleTaskId,
 				});
 
-				// @lat: [[memory#Google Tasks Integration]]
-				syncGoogleTask(
-					() =>
-						createGoogleTask({
-							taskText: meta.task,
-							targetStartTime: meta.startTime,
-							targetDuration: meta.duration,
-							proofDefinition: meta.proof,
-						}),
-					(taskId) =>
-						setUserState(userId, "SCHEDULED", {
-							...stateData.metadata,
-							taskText: meta.task,
-							targetStartTime: meta.startTime,
-							targetDuration: meta.duration,
-							proofDefinition: meta.proof,
-							targetDateStr: todayStr,
-							googleTaskId: taskId,
-						}),
-				);
+				if (matchedTask) {
+					console.log(
+						`[Google Tasks Sync]: Matched existing Google Task ID = ${matchedTask.id}. Skipping duplicate create.`,
+					);
+				} else {
+					// 完全に新規のタスクの場合のみ createGoogleTask を呼び出す
+					// @lat: [[memory#Google Tasks Integration]]
+					syncGoogleTask(
+						() =>
+							createGoogleTask({
+								taskText: meta.task,
+								targetStartTime: meta.startTime,
+								targetDuration: meta.duration,
+								proofDefinition: meta.proof,
+							}),
+						(taskId) =>
+							setUserState(userId, "SCHEDULED", {
+								...stateData.metadata,
+								taskText: meta.task,
+								targetStartTime: meta.startTime,
+								targetDuration: meta.duration,
+								proofDefinition: meta.proof,
+								targetDateStr: todayStr,
+								googleTaskId: taskId,
+							}),
+					);
+				}
 
 				await appendPlannedTask(userId, todayStr, meta.task);
 				return await replyText(client, replyToken, message);
