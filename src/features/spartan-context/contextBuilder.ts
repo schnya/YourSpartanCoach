@@ -1,6 +1,6 @@
-import { getTodayDateString, readDailyLog } from "./memory/dailyLogStore.js";
-import { getDisciplineScore } from "./memory/fsmStore.js";
-import { readPromptTemplate, readUserProfile } from "./memory/profileStore.js";
+import { getTodayDateString, readDailyLog } from "../../shared/memory/dailyLogStore.js";
+import { getDisciplineScore } from "../../shared/memory/fsmStore.js";
+import { readPromptTemplate, readUserProfile } from "../../shared/memory/profileStore.js";
 import { MASTER_SYSTEM_PROMPT, SUB_PROMPT_MORNING } from "./spartanPrompts.js";
 
 // Pure helper function for template variable interpolation
@@ -17,7 +17,7 @@ export function formatTemplate(
 // @lat: [[llm#State-Adaptive Prompting]]
 export async function buildSpartanPrompt(
 	userId: string,
-	state: "MORNING" | "EVENING",
+	state: "MORNING" | "EVENING" | "PROGRESS",
 	googleTasks?: { id: string; title: string }[],
 ): Promise<string> {
 	const profile = await readUserProfile(userId);
@@ -48,6 +48,8 @@ export async function buildSpartanPrompt(
 		subPrompt = SUB_PROMPT_MORNING;
 	} else if (state === "EVENING") {
 		subPrompt = await readPromptTemplate("evening");
+	} else if (state === "PROGRESS") {
+		subPrompt = await readPromptTemplate("progress");
 	}
 
 	// Inject current Google Tasks list when available

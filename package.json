@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "deno task dev",
     "start": "deno task start",
+    "test": "deno test -A",
     "pull-logs": "node scripts/pullLogs.mjs && node scripts/pruneLogs.mjs"
   },
   "dependencies": {
@@ -23,5 +24,6 @@
     "lat.md": "^0.12.1",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"
-  }
+  },
+  "packageManager": "bun@1.3.14"
 }

@@ -6,8 +6,8 @@ import {
 } from "@line/bot-sdk";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { handleUserLogMessage } from "../handlers/messageHandlers.js";
-import { checkAndMarkEventProcessed } from "../services/memory/dailyLogStore.js";
+import { checkAndMarkEventProcessed } from "../../shared/memory/dailyLogStore.js";
+import { handleUserLogMessage } from "./messageHandlers.js";
 
 // @lat: [[routing#Webhook Endpoint]]
 const webhookApp = new Hono();
@@ -39,7 +39,10 @@ function createLineClients(channelAccessToken: string) {
 
 export async function processSingleEvent(
 	event: WebhookEvent,
-	clients: { client: messagingApi.MessagingApiClient | null; blobClient: messagingApi.MessagingApiBlobClient | null },
+	clients: {
+		client: messagingApi.MessagingApiClient | null;
+		blobClient: messagingApi.MessagingApiBlobClient | null;
+	},
 ) {
 	const eventId =
 		event.webhookEventId || `${event.timestamp}-${event.source?.userId}`;
@@ -71,13 +74,7 @@ export async function processSingleEvent(
 				false,
 			);
 		} else if (event.message.type === "image") {
-			await handleUserLogMessage(
-				userId,
-				"",
-				replyToken,
-				clients.client,
-				true,
-			);
+			await handleUserLogMessage(userId, "", replyToken, clients.client, true);
 		}
 		// その他のメッセージタイプ（スタンプ等）はログのみ
 	}

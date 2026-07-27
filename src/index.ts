@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import { Hono } from "hono";
-import cronApp from "./routes/cron.js";
-import webhookApp from "./routes/webhook.js";
+import cronApp from "./features/cron-push/cron.js";
+import webhookApp from "./features/webhook-reply/webhook.js";
 
 dotenv.config();
 

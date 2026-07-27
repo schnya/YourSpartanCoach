@@ -1,18 +1,18 @@
 import { messagingApi } from "@line/bot-sdk";
 import { Hono } from "hono";
-import { buildSpartanPrompt } from "../services/contextBuilder.js";
-import { listGoogleTasks } from "../services/googleTasks.js";
-import { generateMessage } from "../services/llm.js";
+import { listGoogleTasks } from "../../shared/integrations/google-tasks/googleTasks.js";
+import { generateMessage } from "../../shared/llm.js";
 import {
 	appendSentMessage,
 	getTodayDateString,
-} from "../services/memory/dailyLogStore.js";
+} from "../../shared/memory/dailyLogStore.js";
 import {
 	getUserState,
 	setUserState,
 	updateDisciplineScore,
-} from "../services/memory/fsmStore.js";
-import { buildProgressMessage } from "../services/progressMessage.js";
+} from "../../shared/memory/fsmStore.js";
+import { buildSpartanPrompt } from "../spartan-context/contextBuilder.js";
+import { buildProgressMessage } from "../spartan-context/progressMessage.js";
 
 // @lat: [[routing#Cron Trigger Routing]]
 const cronApp = new Hono();

@@ -109,13 +109,13 @@ flowchart TD
 
 ## 🚀 開発環境のセットアップ
 
-本リポジトリは TypeScript と pnpm を用いて管理されています。
+本リポジトリは TypeScript と Bun を用いて管理されています。
 
 ### 1. リポジトリの準備
 ```bash
 git clone <repository-url>
 cd line-companion-bot
-pnpm install
+bun install
 ```
 
 ### 2. 環境変数の設定

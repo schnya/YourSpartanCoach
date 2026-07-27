@@ -3,8 +3,8 @@ import {
 	appendRawUserLog,
 	appendSentMessage,
 	getTodayDateString,
-} from "../services/memory/dailyLogStore.js";
-import { getUserState, setUserState } from "../services/memory/fsmStore.js";
+} from "../../shared/memory/dailyLogStore.js";
+import { getUserState, setUserState } from "../../shared/memory/fsmStore.js";
 
 // Fire-and-forget 用の軽量ヘルパ（将来の外部連携拡張を見据えたプレースホルダ）
 function syncExternal(_task: () => Promise<unknown>, _onDone: () => void) {

@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import type { messagingApi, WebhookEvent } from "@line/bot-sdk";
-import { readDailyLog } from "../services/memory/dailyLogStore.js";
+import { readDailyLog } from "../../shared/memory/dailyLogStore.js";
 import webhookApp, { processSingleEvent } from "./webhook.js";
 
 Deno.test("Webhook Endpoint & FP Handler Tests", async (t) => {

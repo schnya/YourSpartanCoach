@@ -146,18 +146,9 @@ export async function appendSentMessage(
 	await saveDailyLog(userId, dateStr, updatedLog);
 }
 
-export async function carryOverPendingTasks(
-	userId: string,
-	todayStr: string,
-): Promise<string[]> {
-	const yesterdayStr = format(subDays(new Date(), 1), "yyyy-MM-dd", {
-		in: TZ_JST,
-	});
-
-	const yesterdayLog = await readDailyLog(userId, yesterdayStr);
-
+export function extractUncompletedTasks(logContent: string): string[] {
 	const taskLines: string[] = [];
-	const scheduledSectionMatch = yesterdayLog.match(
+	const scheduledSectionMatch = logContent.match(
 		/## Scheduled Tasks\n([\s\S]*?)(?=\n## |$)/,
 	);
 	if (scheduledSectionMatch?.[1]) {
@@ -173,6 +164,19 @@ export async function carryOverPendingTasks(
 			}
 		}
 	}
+	return taskLines;
+}
+
+export async function carryOverPendingTasks(
+	userId: string,
+	todayStr: string,
+): Promise<string[]> {
+	const yesterdayStr = format(subDays(new Date(), 1), "yyyy-MM-dd", {
+		in: TZ_JST,
+	});
+
+	const yesterdayLog = await readDailyLog(userId, yesterdayStr);
+	const taskLines = extractUncompletedTasks(yesterdayLog);
 
 	if (taskLines.length > 0) {
 		for (const task of taskLines) {
