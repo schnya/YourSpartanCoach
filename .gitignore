@@ -25,6 +25,8 @@ memory/users/*/logs/
 
 # Obsidian & Local Metadata
 .obsidian/
+# Smart Connections plugin cache (regenerable embeddings/blocks; may mirror private notes)
+.smart-env/
 test-models.ts
 
 # OS files
@@ -34,5 +36,19 @@ Thumbs.db
 
 # lat.md cache
 lat.md/.cache/
+
+# Generated dead-code reports (produced by scripts/find_unreferenced.py cron)
+reports/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Logs
+logs/
+*.log
+
+# Local shell scripts for cron / personal environment
+scripts/*.sh
 
 

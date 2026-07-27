@@ -12,6 +12,7 @@ import {
 	setUserState,
 	updateDisciplineScore,
 } from "../services/memory/fsmStore.js";
+import { buildProgressMessage } from "../services/progressMessage.js";
 
 // @lat: [[routing#Cron Trigger Routing]]
 const cronApp = new Hono();
@@ -145,8 +146,8 @@ cronApp.get("/progress", async (c) => {
 			: null;
 		const recentReply = !!lastReply && !!lastPush && lastReply > lastPush;
 
-		const prompt = await buildSpartanPrompt(userId, "PROGRESS", googleTasks);
-		const progressMsg = await generateMessage(prompt);
+		// 固定メッセージ（LLM不使用）: 現在のタスク一覧をそのまま提示する。
+		const progressMsg = buildProgressMessage(googleTasks);
 
 		await appendSentMessage(
 			userId,

@@ -1,0 +1,12 @@
+# Smart Connections index exclusions (gitignore-style globs)
+# Applied at vault root (memory/). See repo .scignore for the plugin's own defaults.
+
+# Plugin's own cache + Obsidian internals — never index
+.smart-env/
+.obsidian/
+
+# OS cruft
+.DS_Store
+
+# Sample/template files are noise; the real files are still indexed
+*.sample.md

@@ -35,7 +35,14 @@ async function runContextBuilderTests() {
 	// Test 4: buildSpartanPrompt for EVENING state
 	console.log("- Test 4: Testing buildSpartanPrompt for EVENING state...");
 	const eveningPrompt = await buildSpartanPrompt("test-user", "EVENING");
-	assert.ok(eveningPrompt.includes("Evening Review"));
+	// Evening sub-prompt is loaded from memory/prompt_evening.md (falls back to
+	// the SUB_PROMPT_EVENING constant). Both reference the night review + the
+	// day's action log.
+	assert.ok(
+		eveningPrompt.includes("夜の総括") ||
+			eveningPrompt.includes("Evening Review"),
+	);
+	assert.ok(eveningPrompt.includes("Today's Action Log"));
 
 	console.log("All Context Builder Tests Passed Successfully!");
 }

@@ -1,11 +1,7 @@
+import { getTodayDateString, readDailyLog } from "./memory/dailyLogStore.js";
 import { getDisciplineScore } from "./memory/fsmStore.js";
-import { readUserProfile } from "./memory/profileStore.js";
-import {
-	MASTER_SYSTEM_PROMPT,
-	SUB_PROMPT_EVENING,
-	SUB_PROMPT_MORNING,
-	SUB_PROMPT_PROGRESS,
-} from "./spartanPrompts.js";
+import { readPromptTemplate, readUserProfile } from "./memory/profileStore.js";
+import { MASTER_SYSTEM_PROMPT, SUB_PROMPT_MORNING } from "./spartanPrompts.js";
 
 // Pure helper function for template variable interpolation
 export function formatTemplate(
@@ -21,7 +17,7 @@ export function formatTemplate(
 // @lat: [[llm#State-Adaptive Prompting]]
 export async function buildSpartanPrompt(
 	userId: string,
-	state: "MORNING" | "PROGRESS" | "EVENING",
+	state: "MORNING" | "EVENING",
 	googleTasks?: { id: string; title: string }[],
 ): Promise<string> {
 	const profile = await readUserProfile(userId);
@@ -43,14 +39,15 @@ export async function buildSpartanPrompt(
 		.replace("{{DISCIPLINE_SCORE}}", String(score))
 		.replace("{{STAKED_COMMITMENT_DETAILS}}", stakedDetails);
 
-	// Append modular sub-prompt based on context
+	// Append modular sub-prompt based on context.
+	// Evening uses the local .md template (memory/prompt_evening.md) so it can be
+	// edited without redeploy; falls back to the bundled constant if the file is
+	// missing.
 	let subPrompt = "";
 	if (state === "MORNING") {
 		subPrompt = SUB_PROMPT_MORNING;
-	} else if (state === "PROGRESS") {
-		subPrompt = SUB_PROMPT_PROGRESS;
 	} else if (state === "EVENING") {
-		subPrompt = SUB_PROMPT_EVENING;
+		subPrompt = await readPromptTemplate("evening");
 	}
 
 	// Inject current Google Tasks list when available
@@ -61,8 +58,17 @@ export async function buildSpartanPrompt(
 			.join("\n");
 		taskContext = `\n\n# Current Google Tasks\n${formatted}`;
 	} else {
-		taskContext = "\n\n# Current Google Tasks\n(現在登録されたタスクはありません)";
+		taskContext =
+			"\n\n# Current Google Tasks\n(現在登録されたタスクはありません)";
 	}
 
-	return `${prompt}${taskContext}\n\n---\n\n${subPrompt}`;
+	// For the evening review, also inject the day's action log so the summary
+	// can react to each entry instead of being an empty recap.
+	let logContext = "";
+	if (state === "EVENING") {
+		const todayLog = await readDailyLog(userId, getTodayDateString());
+		logContext = `\n\n# Today's Action Log\n${todayLog}`;
+	}
+
+	return `${prompt}${taskContext}${logContext}\n\n---\n\n${subPrompt}`;
 }

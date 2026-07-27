@@ -7,7 +7,7 @@ import {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { handleUserLogMessage } from "../handlers/messageHandlers.js";
-import { appendRawUserLog, checkAndMarkEventProcessed, getTodayDateString } from "../services/memory/dailyLogStore.js";
+import { checkAndMarkEventProcessed } from "../services/memory/dailyLogStore.js";
 
 // @lat: [[routing#Webhook Endpoint]]
 const webhookApp = new Hono();
@@ -37,10 +37,9 @@ function createLineClients(channelAccessToken: string) {
 	};
 }
 
-async function processSingleEvent(
+export async function processSingleEvent(
 	event: WebhookEvent,
 	clients: { client: messagingApi.MessagingApiClient | null; blobClient: messagingApi.MessagingApiBlobClient | null },
-	today: string,
 ) {
 	const eventId =
 		event.webhookEventId || `${event.timestamp}-${event.source?.userId}`;
@@ -64,7 +63,6 @@ async function processSingleEvent(
 		if (!replyToken || !clients.client) return;
 
 		if (event.message.type === "text") {
-			await appendRawUserLog(userId, today, event.message.text.trim());
 			await handleUserLogMessage(
 				userId,
 				event.message.text.trim(),
@@ -116,12 +114,11 @@ webhookApp.post("/", async (c) => {
 			return c.text("Bad Request", 400);
 		}
 
-		const today = getTodayDateString();
 		const clients = createLineClients(channelAccessToken);
 
 		if (body && Array.isArray(body.events)) {
 			for (const event of body.events) {
-				await processSingleEvent(event, clients, today);
+				await processSingleEvent(event, clients);
 			}
 		}
 

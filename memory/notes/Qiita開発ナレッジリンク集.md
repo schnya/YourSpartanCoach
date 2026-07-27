@@ -1,9 +1,18 @@
+---
+tags: [engineering, dev-seed, reference]
+status: evergreen
+type: note
+---
+
+# Qiita開発ナレッジリンク集
+
+**要約**: ソフトウェア開発全般（要件定義〜運用保守、インフラ、UI/UX、AI系など）を網羅したQiitaまとめ記事へのリンク集。要素技術を調べるときのエントリとして使う。詳細は各リンク先を参照。
+
 - [契約・見積](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E5%A5%91%E7%B4%84%E8%A6%8B%E7%A9%8D)
 - [会社・組織・文化・CTO・VPoE・VPoP](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E4%BC%9A%E7%A4%BE%E7%B5%84%E7%B9%94%E6%96%87%E5%8C%96ctovpoevpop)
 - [監査・統制](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E7%9B%A3%E6%9F%BB%E7%B5%B1%E5%88%B6)
 - [要員調達](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E8%A6%81%E5%93%A1%E8%AA%BF%E9%81%94)
 - [プロダクトマネジメント](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E3%83%97%E3%83%AD%E3%83%80%E3%82%AF%E3%83%88%E3%83%9E%E3%83%8D%E3%82%B8%E3%83%A1%E3%83%B3%E3%83%88)
-- [市場調査・マーケティング・UI/UX](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E5%B8%82%E5%A0%B4%E8%AA%BF%E6%9F%BB%E3%83%9E%E3%83%BC%E3%82%B1%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0uiux)
     - [事業](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E4%BA%8B%E6%A5%AD)
     - [マーケティング・SEO・ASO](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E3%83%9E%E3%83%BC%E3%82%B1%E3%83%86%E3%82%A3%E3%83%B3%E3%82%B0seoaso)
     - [市場分析](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E5%B8%82%E5%A0%B4%E5%88%86%E6%9E%90)
@@ -53,3 +62,7 @@
     - [AIツールサイト](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#ai%E3%83%84%E3%83%BC%E3%83%AB%E3%82%B5%E3%82%A4%E3%83%88)
     - [プロンプトナレッジ](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E3%83%97%E3%83%AD%E3%83%B3%E3%83%97%E3%83%88%E3%83%8A%E3%83%AC%E3%83%83%E3%82%B8)
 - [雑学（便利機能）](https://qiita.com/NullPointerException/items/fca7cbd205f7445f7e87#%E9%9B%91%E5%AD%A6%E4%BE%BF%E5%88%A9%E6%A9%9F%E8%83%BD)
+
+## Related
+- [[ハーネスとエージェント制御]]
+- [[長いMarkdownをそのまま毎回読み込ませない対処法]]

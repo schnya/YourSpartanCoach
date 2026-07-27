@@ -1,11 +1,6 @@
 import assert from "node:assert";
 import { buildSpartanPrompt } from "./contextBuilder.js";
-import {
-	MASTER_SYSTEM_PROMPT,
-	SUB_PROMPT_EVENING,
-	SUB_PROMPT_MORNING,
-	SUB_PROMPT_PROGRESS,
-} from "./spartanPrompts.js";
+import { MASTER_SYSTEM_PROMPT, SUB_PROMPT_MORNING } from "./spartanPrompts.js";
 
 async function runPromptTests() {
 	console.log("Starting Spartan Prompts Tests...");
@@ -35,22 +30,10 @@ async function runPromptTests() {
 		"SUB_PROMPT_MORNING must include Non-chase rule",
 	);
 
-	// Test 4: SUB_PROMPT_PROGRESS contains 50-minute progress directive
-	console.log("- Test 4: Progress sub-prompt contains 50-minute check-in directive...");
-	assert.ok(
-		SUB_PROMPT_PROGRESS.includes("50-Minute Progress Check-in"),
-		"SUB_PROMPT_PROGRESS must mention 50-Minute Progress Check-in",
-	);
-
-	// Test 5: SUB_PROMPT_EVENING forbids explicit score numbers
-	console.log("- Test 5: Evening sub-prompt forbids explicit score numbers...");
-	assert.ok(
-		SUB_PROMPT_EVENING.includes("スコアの数字"),
-		"SUB_PROMPT_EVENING must instruct not to include explicit score numbers",
-	);
-
 	// Test 6: buildSpartanPrompt generates prompt for MORNING state
-	console.log("- Test 6: buildSpartanPrompt generates prompt for MORNING state...");
+	console.log(
+		"- Test 6: buildSpartanPrompt generates prompt for MORNING state...",
+	);
 	const prompt = await buildSpartanPrompt("test_user_prompt", "MORNING", [
 		{ id: "1", title: "タスクA" },
 	]);

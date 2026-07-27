@@ -83,7 +83,7 @@ export async function readPatterns(): Promise<string> {
 
 // @lat: [[memory#Local Markdown Store]]
 export async function readPromptTemplate(
-	type: "morning" | "evening" | "accountability" | "task_planning",
+	type: "morning" | "evening",
 ): Promise<string> {
 	const filename = `prompt_${type}.md`;
 	try {

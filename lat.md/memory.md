@@ -2,7 +2,7 @@
 
 LINE Bot におけるセッション状態や会話履歴、タスク情報を永続化・管理するストレージ抽象化レイヤーについて説明します。
 
-サーバーレスの制約下でもステートフルな体験を実現するため、[[src/services/memoryStore.ts]] をエントリポイントとして `src/services/memory/` 配下にストレージ制御ロジックを集約・モジュール化しています。
+サーバーレスの制約下でもステートフルな体験を実現するため、`src/services/memory/` 配下にストレージ制御ロジックを集約・モジュール化しています。デイリーログのエントリポイントは [[src/services/memory/dailyLogStore.ts#readDailyLog]] です。
 
 ## Upstash Redis Store
 
@@ -39,3 +39,13 @@ Deno Deploy はステートレスなため、全ログは Upstash Redis に永�
 ### OAuth Setup & Token Provisioning
 
 Google Tasks 連携の認証設定手順です。`scripts/genGoogleToken.mjs` を実行しローカル HTTP サーバー経由で `GOOGLE_REFRESH_TOKEN` を `.env` へ書き込みます。同スクリプトは依存ゼロです。
+
+## Notes Vault Hygiene
+
+Smart Connections / RAG の検索精度を高めるため、`memory/notes/**` と `memory/users/**/*.md` に対して毎晩フロントマターと `## Related` リンクを補完する idempotent な保守スクリプトです。
+
+Hermes cron ジョブ `vault-tidy-notes`（毎日 23:30 JST）が `scripts/tidyNotes.sh` → `scripts/tidyNotes.mjs` を実行します。スクリプトは (1) 欠落している YAML frontmatter（`type`/`status`/`tags`、ログには `user`+`date`）を補い、(2) 末尾に `## Related` の wiki-link シード（Obsidian運用方針 等の vault ノート）を1回だけ付与します。本文は書き換えず、2回目以降の実行は変更ゼロ（冪等）です。
+
+### Daily Log 互換性
+
+ARES デイリーログ（`memory/users/<userId>/logs/*.md`）へ frontmatter を挿入しても、[[src/services/memory/dailyLogStore.ts]] の末尾追記と `## Scheduled Tasks` 正規表現解析は影響を受けません。ボットは行1が見出しであることを前提とせず、frontmatter は単一行スカラー（ブロックリテラル不使用）で `## ` を含まないため、解析を破壊しません。
