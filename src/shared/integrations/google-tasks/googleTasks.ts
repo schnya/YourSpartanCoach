@@ -177,11 +177,6 @@ export async function listGoogleTasks(): Promise<GoogleTaskItem[]> {
 	}
 }
 
-// 差分検知用: 現在の未完了タスクのID群を取得する
-export async function listGoogleTaskIds(): Promise<string[]> {
-	const tasks = await listGoogleTasks();
-	return tasks.map((t) => t.id).filter(Boolean) as string[];
-}
 
 export function findMatchingGoogleTask(
 	targetText: string,
