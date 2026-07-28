@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "deno task dev",
     "start": "deno task start",
+    "build": "deno task build",
     "test": "deno test -A",
     "pull-logs": "node scripts/pullLogs.mjs && node scripts/pruneLogs.mjs"
   },
