@@ -1,8 +1,8 @@
 {
   "nodeModulesDir": "auto",
   "tasks": {
-    "dev": "deno serve -A --watch src/index.ts",
-    "start": "deno serve -A src/index.ts",
+    "dev": "deno serve -A --env-file=.env --watch src/index.ts",
+    "start": "deno serve -A --env-file=.env src/index.ts",
     "deploy": "deno run -A jsr:@deno/deployctl deploy --env-file=.env --prod"
   }
 }

@@ -23,7 +23,6 @@
     "npm:@types/node@^22.13.4": "22.20.1",
     "npm:@upstash/redis@^1.38.0": "1.38.0",
     "npm:date-fns@^4.4.0": "4.4.0",
-    "npm:dotenv@^16.4.7": "16.6.1",
     "npm:hono@^4.7.2": "4.12.31",
     "npm:keychain@1.5.0": "1.5.0",
     "npm:lat.md@~0.12.1": "0.12.1",
@@ -636,9 +635,6 @@
       "dependencies": [
         "dequal"
       ]
-    },
-    "dotenv@16.6.1": {
-      "integrity": "sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow=="
     },
     "dunder-proto@1.0.1": {
       "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
@@ -1703,7 +1699,6 @@
         "npm:@types/node@^22.13.4",
         "npm:@upstash/redis@^1.38.0",
         "npm:date-fns@^4.4.0",
-        "npm:dotenv@^16.4.7",
         "npm:hono@^4.7.2",
         "npm:lat.md@~0.12.1",
         "npm:tsx@^4.19.3",

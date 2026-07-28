@@ -16,7 +16,6 @@
     "@line/bot-sdk": "^9.5.0",
     "@upstash/redis": "^1.38.0",
     "date-fns": "^4.4.0",
-    "dotenv": "^16.4.7",
     "hono": "^4.7.2"
   },
   "devDependencies": {

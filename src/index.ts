@@ -1,9 +1,6 @@
-import dotenv from "dotenv";
 import { Hono } from "hono";
 import cronApp from "./features/cron-push/cron.js";
 import webhookApp from "./features/webhook-reply/webhook.js";
-
-dotenv.config();
 
 const app = new Hono();
 
