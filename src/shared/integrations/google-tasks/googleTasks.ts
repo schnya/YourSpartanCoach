@@ -67,10 +67,10 @@ export async function createGoogleTask(
 			: "";
 		const durationText = params.targetDuration
 			? ` (${params.targetDuration}分ブロック)`
-			: " (50分ブロック)";
+			: " (60分ブロック)";
 		const title = `${timePrefix}${params.taskText}${durationText}`;
 
-		const notes = `開始予定: ${params.targetStartTime || "未指定"} | 所要時間: ${params.targetDuration || 50}分 | 成果物定義: ${params.proofDefinition || "未指定"}`;
+		const notes = `開始予定: ${params.targetStartTime || "未指定"} | 所要時間: ${params.targetDuration || 60}分 | 成果物定義: ${params.proofDefinition || "未指定"}`;
 
 		const res = await fetch(
 			`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(listId)}/tasks`,

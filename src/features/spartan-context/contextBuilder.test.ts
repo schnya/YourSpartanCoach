@@ -19,9 +19,9 @@ async function runContextBuilderTests() {
 	// Test 2: buildSpartanPrompt for MORNING state with Google Tasks injection
 	console.log("- Test 2: Testing buildSpartanPrompt for MORNING state...");
 	const spartanPrompt = await buildSpartanPrompt("test-user", "MORNING", [
-		{ id: "t1", title: "開発50分" },
+		{ id: "t1", title: "開発60分" },
 	]);
-	assert.ok(spartanPrompt.includes("開発50分"));
+	assert.ok(spartanPrompt.includes("開発60分"));
 	assert.ok(spartanPrompt.includes("Current Google Tasks"));
 
 	// Test 3: buildSpartanPrompt for PROGRESS state

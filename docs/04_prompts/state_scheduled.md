@@ -23,5 +23,5 @@ The user agreed to start {{TODAY_TASK}} at {{TARGET_TIME}}.
 
 # Output Format Example
 
-「【定刻到達】予定時刻（{{TARGET_TIME}}）だ。宣言した{{TODAY_TASK}}（50分ブロック）を開始せよ。 開始を自分から宣言して集中に入れ。言い訳無用。」
+「【定刻到達】予定時刻（{{TARGET_TIME}}）だ。宣言した{{TODAY_TASK}}（60分ブロック）を開始せよ。 開始を自分から宣言して集中に入れ。言い訳無用。」
 ```

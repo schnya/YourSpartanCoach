@@ -106,8 +106,8 @@ cronApp.get("/morning", async (c) => {
 	}
 });
 
-// 50分おき進捗確認 Cron (/cron/progress) - */50 * * * * で発動
-// ACTIVE なら進捗メッセージを push。直近50分で返信もタスク増減もなければ
+// 60分おき進捗確認 Cron (/cron/progress) - 0 7-22 * * * で発動
+// ACTIVE なら進捗メッセージを push。直近60分で返信もタスク増減もなければ
 // IDLE（LINE未確認ステータス）に切り替え、以降は push を停止する。
 cronApp.get("/progress", async (c) => {
 	try {
@@ -137,7 +137,7 @@ cronApp.get("/progress", async (c) => {
 			});
 		}
 
-		// 直近50分のユーザー返信を判定（前回push以降に返信があれば recentReply=true）
+		// 直近60分のユーザー返信を判定（前回push以降に返信があれば recentReply=true）
 		const lastReply = stateData.metadata?.lastUserReplyAt
 			? new Date(stateData.metadata.lastUserReplyAt)
 			: null;

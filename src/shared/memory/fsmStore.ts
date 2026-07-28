@@ -1,7 +1,7 @@
 import { getRedisClient } from "./redisClient.js";
 
 // 新モデル: 2状態FSM
-//  ACTIVE: 50分おきの進捗確認ループが稼働中（ユーザーが応答中 / タスク増減あり）
+//  ACTIVE: 60分おきの進捗確認ループが稼働中（ユーザーが応答中 / タスク増減あり）
 //  IDLE:   日の始まり / LINE未確認ステータス（push停止中）
 type FsmState = "IDLE" | "ACTIVE";
 

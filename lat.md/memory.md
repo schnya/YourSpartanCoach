@@ -30,7 +30,7 @@ Deno Deploy はステートレスなため、全ログは Upstash Redis に永�
 
 ユーザーの外部タスク管理ツール（Google Tasks）と ARES FSM 状態を非同期・非ブロッキングで連携する構造について説明します。
 
-[[src/shared/integrations/google-tasks/googleTasks.ts]] において `listGoogleTasks` で未完了タスクを取得し、朝の Cron（`/morning`）発動時に AIが優先度付けと行動経済学的意見を添えて LINE 提示します。ユーザーの承認フェーズはなく、タスクの書き換えはユーザー自身が Google Tasks 側で行います。50分おきの `/progress` では `listGoogleTaskIds` で現在のタスクID群を取得し、朝のスナップショット（`taskSnapshot`）との差分（新規追加＋完了）を検知して増減フラグを立てます。
+[[src/shared/integrations/google-tasks/googleTasks.ts]] において `listGoogleTasks` で未完了タスクを取得し、朝の Cron（`/morning`）発動時に AIが優先度付けと行動経済学的意見を添えて LINE 提示します。ユーザーの承認フェーズはなく、タスクの書き換えはユーザー自身が Google Tasks 側で行います。60分おきの `/progress` では `listGoogleTaskIds` で現在のタスクID群を取得し、朝のスナップショット（`taskSnapshot`）との差分（新規追加＋完了）を検知して増減フラグを立てます。
 
 ### User Log Recording & Task Sync
 
