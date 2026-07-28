@@ -57,6 +57,10 @@ async function sendPushMessage(userId: string, text: string) {
 	}
 }
 
+function getUserId(): string {
+	return process.env.LINE_USER_ID || "default_user";
+}
+
 function arraysDiffer(a: string[] = [], b: string[] = []): boolean {
 	if (a.length !== b.length) return true;
 	const setB = new Set(b);
@@ -68,7 +72,7 @@ function arraysDiffer(a: string[] = [], b: string[] = []): boolean {
 // 行動経済学的意見を添えて push。その後 ACTIVE ループを開始。
 cronApp.get("/morning", async (c) => {
 	try {
-		const userId = process.env.LINE_USER_ID || "default_user";
+		const userId = getUserId();
 
 		const googleTasks = await listGoogleTasks();
 		const taskIds = googleTasks.map((t) => t.id).filter(Boolean) as string[];
@@ -111,7 +115,7 @@ cronApp.get("/morning", async (c) => {
 // IDLE（LINE未確認ステータス）に切り替え、以降は push を停止する。
 cronApp.get("/progress", async (c) => {
 	try {
-		const userId = process.env.LINE_USER_ID || "default_user";
+		const userId = getUserId();
 		const stateData = await getUserState(userId);
 
 		// IDLE（未確認中）: push せず、webhook で復帰されるまで待機
@@ -185,7 +189,7 @@ cronApp.get("/progress", async (c) => {
 // 日中のタスク増減とLINE返信の有無で加点/減点を判定し、スコアに基づくトーンで総括を LLM 生成して push。
 cronApp.get("/evening", async (c) => {
 	try {
-		const userId = process.env.LINE_USER_ID || "default_user";
+		const userId = getUserId();
 		const today = getTodayDateString();
 		const stateData = await getUserState(userId);
 

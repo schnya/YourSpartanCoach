@@ -61,7 +61,7 @@ export async function processSingleEvent(
 	}
 
 	// ユーザーからのテキスト・画像投稿はすべて「記録」として扱う
-	if (event.type === "message" && userId) {
+	if (event.type === "message") {
 		const replyToken = "replyToken" in event ? event.replyToken : undefined;
 		if (!replyToken || !clients.client) return;
 
