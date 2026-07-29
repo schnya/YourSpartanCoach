@@ -129,17 +129,9 @@ cronApp.get("/progress", async (c) => {
 
 		const googleTasks = await listGoogleTasks();
 		const currentIds = googleTasks.map((t) => t.id).filter(Boolean) as string[];
-		const snapshot = stateData.metadata?.taskSnapshot || [];
-
 		// タスクの増減（新規追加＋完了）を検知
+		const snapshot = stateData.metadata?.currentTaskSnapshot || stateData.metadata?.taskSnapshot || [];
 		const tasksChanged = arraysDiffer(snapshot, currentIds);
-		if (tasksChanged) {
-			await setUserState(userId, "ACTIVE", {
-				...stateData.metadata,
-				tasksChangedToday: true,
-				currentTaskSnapshot: currentIds,
-			});
-		}
 
 		// 直近60分のユーザー返信を判定（前回push以降に返信があれば recentReply=true）
 		const lastReply = stateData.metadata?.lastUserReplyAt
@@ -150,19 +142,23 @@ cronApp.get("/progress", async (c) => {
 			: null;
 		const recentReply = !!lastReply && !!lastPush && lastReply > lastPush;
 
-		// 固定メッセージ（LLM不使用）: 現在のタスク一覧をそのまま提示する。
-		const progressMsg = buildProgressMessage(googleTasks);
+		// 返信もタスク増減もなければ今回も push せず IDLE に移行する
+		const shouldPush = recentReply || tasksChanged;
+		let progressMsg = "";
 
-		await appendSentMessage(
-			userId,
-			getTodayDateString(),
-			"Progress",
-			progressMsg,
-		);
-		await sendPushMessage(userId, progressMsg);
+		if (shouldPush) {
+			progressMsg = buildProgressMessage(googleTasks);
+			await appendSentMessage(
+				userId,
+				getTodayDateString(),
+				"Progress",
+				progressMsg,
+			);
+			await sendPushMessage(userId, progressMsg);
+		}
 
-		// 次回判定用に push 時刻を更新。返信も増減もなければ IDLE 化。
-		const nextActive = recentReply || tasksChanged;
+		// 返信も増減もなければ IDLE 化、状態とメタデータを一括更新
+		const nextActive = shouldPush;
 		await setUserState(userId, nextActive ? "ACTIVE" : "IDLE", {
 			...stateData.metadata,
 			tasksChangedToday: stateData.metadata?.tasksChangedToday || tasksChanged,
@@ -173,6 +169,7 @@ cronApp.get("/progress", async (c) => {
 		return c.json({
 			success: true,
 			type: "progress",
+			pushed: shouldPush,
 			message: progressMsg,
 			nextState: nextActive ? "ACTIVE" : "IDLE",
 			recentReply,

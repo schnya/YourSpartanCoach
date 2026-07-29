@@ -6,12 +6,6 @@ import {
 } from "../../shared/memory/dailyLogStore.js";
 import { getUserState, setUserState } from "../../shared/memory/fsmStore.js";
 
-// Fire-and-forget 用の軽量ヘルパ（将来の外部連携拡張を見据えたプレースホルダ）
-function syncExternal(_task: () => Promise<unknown>, _onDone: () => void) {
-	// 現モデルでは外部同期は行わない（Google Tasks は朝/60分で自動反映）。
-	// 拡張時はここにベストエフォート処理を実装する。
-}
-
 async function replyText(
 	client: messagingApi.MessagingApiClient,
 	replyToken: string,
@@ -49,12 +43,6 @@ export async function handleUserLogMessage(
 	const reply = "記録したよ 👍";
 	await appendSentMessage(userId, today, "Reply", reply);
 	await replyText(client, replyToken, reply);
-
-	// 拡張ポイント（現在は no-op）
-	syncExternal(
-		() => Promise.resolve(null),
-		() => {},
-	);
 
 	void wasIdle;
 	return;
