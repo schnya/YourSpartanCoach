@@ -24,6 +24,21 @@ export const computeRecentReply = (
 	return !!lastReply && !!lastPush && lastReply > lastPush;
 };
 
+export const NUDGE_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+export const shouldSendNoResponseNudge = (
+	lastUserReplyAt: string | undefined,
+	lastNudgeAt: string | undefined,
+	now = Date.now(),
+): boolean => {
+	if (!lastUserReplyAt) return false;
+	const lastReply = new Date(lastUserReplyAt).getTime();
+	if (!Number.isFinite(lastReply) || now - lastReply < NUDGE_INTERVAL_MS) return false;
+	if (!lastNudgeAt) return true;
+	const lastNudge = new Date(lastNudgeAt).getTime();
+	return !Number.isFinite(lastNudge) || now - lastNudge >= NUDGE_INTERVAL_MS;
+};
+
 export const computeDisciplineDelta = (
 	tasksChanged: boolean,
 	replied: boolean,

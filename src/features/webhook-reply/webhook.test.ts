@@ -3,6 +3,15 @@ import type { messagingApi, WebhookEvent } from "@line/bot-sdk";
 import { readDailyLog } from "../../shared/memory/dailyLogStore.js";
 import webhookApp, { processSingleEvent } from "./webhook.js";
 
+interface DenoTestContext {
+	step: (name: string, fn: () => void | Promise<void>) => Promise<boolean>;
+}
+
+declare const Deno: {
+	test: (name: string, fn: (t: DenoTestContext) => void | Promise<void>) => void;
+	remove: (path: string) => Promise<void>;
+};
+
 Deno.test("Webhook Endpoint & FP Handler Tests", async (t) => {
 	// Test 1: Guard Clause - Missing Signature Header returns 401
 	await t.step("Missing x-line-signature header returns 401", async () => {

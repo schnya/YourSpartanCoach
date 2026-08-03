@@ -16,6 +16,7 @@ import {
 	handleCronRoute,
 	type PushClient,
 	sendAndRecordPush,
+	shouldSendNoResponseNudge,
 } from "./helper.js";
 
 type Env = { Variables: { pushClient: PushClient } };
@@ -44,6 +45,8 @@ cronApp.use("*", async (c, next) => {
 });
 
 const getUserId = (): string => process.env.LINE_USER_ID || "default_user";
+const NO_RESPONSE_NUDGE =
+	"今日の一歩は、小さくて大丈夫です。できそうなことを1つだけ試してみましょう。";
 
 // 朝の Cron (/cron/morning) - 毎朝07:00に発動
 cronApp.get("/morning", async (c) => {
@@ -83,16 +86,21 @@ cronApp.get("/progress", async (c) => {
 		const userId = getUserId();
 		const stateData = await getUserState(userId);
 
-		// IDLE（未確認中）: push せず、webhook で復帰されるまで待機
-		if (stateData.state !== "ACTIVE") {
+		const { tasks: googleTasks, taskIds: currentIds } =
+			await fetchGoogleTasksWithIds(userId);
+		const metadata = stateData.metadata;
+		const shouldNudge = shouldSendNoResponseNudge(
+			metadata?.lastUserReplyAt,
+			metadata?.lastNudgeAt,
+		);
+
+		// IDLEでも4時間以上無応答ならnudgeを許可する。
+		if (stateData.state !== "ACTIVE" && !shouldNudge) {
 			return {
 				state: stateData.state,
 				msg: "Inactive (LINE unchecked). Skipping progress push.",
 			};
 		}
-
-		const { tasks: googleTasks, taskIds: currentIds } =
-			await fetchGoogleTasksWithIds(userId);
 
 		const snapshot =
 			stateData.metadata?.currentTaskSnapshot ||
@@ -105,11 +113,13 @@ cronApp.get("/progress", async (c) => {
 			stateData.metadata?.lastProgressPushAt,
 		);
 
-		const shouldPush = recentReply || tasksChanged;
+		const shouldPush = recentReply || tasksChanged || shouldNudge;
 		let progressMsg = "";
 
 		if (shouldPush) {
-			progressMsg = buildProgressMessage(googleTasks);
+			progressMsg = shouldNudge
+				? NO_RESPONSE_NUDGE
+				: buildProgressMessage(googleTasks);
 			await sendAndRecordPush(pushClient, userId, "Progress", progressMsg);
 		}
 
@@ -119,6 +129,7 @@ cronApp.get("/progress", async (c) => {
 			tasksChangedToday: stateData.metadata?.tasksChangedToday || tasksChanged,
 			currentTaskSnapshot: currentIds,
 			lastProgressPushAt: new Date().toISOString(),
+			...(shouldNudge ? { lastNudgeAt: new Date().toISOString() } : {}),
 		});
 
 		return {
@@ -128,6 +139,7 @@ cronApp.get("/progress", async (c) => {
 			nextState: nextActive ? "ACTIVE" : "IDLE",
 			recentReply,
 			tasksChanged,
+			shouldNudge,
 		};
 	});
 

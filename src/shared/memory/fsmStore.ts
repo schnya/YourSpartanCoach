@@ -18,6 +18,8 @@ interface FsmStateData {
 		lastProgressPushAt?: string;
 		// 最後にユーザーからLINE返信があった時刻（ISO文字列）
 		lastUserReplyAt?: string;
+		// 最後に無応答ガード付き nudge を送った時刻
+		lastNudgeAt?: string;
 		// 物理的延期累計（SOS②用、互換維持）
 		physicalPostponeCount?: number;
 		// 直近のGoogle Tasks一覧キャッシュ（進捗メッセージ用）
