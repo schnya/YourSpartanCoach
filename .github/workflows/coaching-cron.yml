@@ -1,31 +1,66 @@
-name: Coaching Accountability Cron
+name: Coaching Cron (GitHub Actions)
+
+# Triggers the ARES / Your Spartan Coach LINE bot cron endpoints.
+# Endpoints live on Deno Deploy and are protected by CRON_SECRET (Bearer auth).
+# NOTE: GitHub Actions cron can drift up to ~15 min past the scheduled minute,
+# which is acceptable for coaching pushes (no second-level precision needed).
 
 on:
   schedule:
-    # 40分おきトリガー (GitHub Actions Cron)
-    - cron: '*/40 * * * *'
+    # Morning push — 07:00 JST (= 22:00 UTC previous day)
+    - cron: "0 22 * * *"
+    # Evening push — 22:00 JST (= 13:00 UTC)
+    - cron: "0 13 * * *"
+    # Progress check — every hour from 07:00 to 22:00 JST.
+    # UTC spans 22:00(prev)..13:00; we gate the lower/upper hours via JST check below.
+    - cron: "0 * * * *"
   workflow_dispatch:
+    inputs:
+      endpoint:
+        description: "Which endpoint to trigger (morning|progress|evening)"
+        required: false
+        default: "progress"
 
 jobs:
-  trigger-coaching:
+  coaching-morning:
+    if: github.event.schedule == '0 22 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.endpoint == 'morning')
     runs-on: ubuntu-latest
     steps:
-      - name: Check current time (JST) and trigger accountability cron
+      - name: Trigger /cron/morning (07:00 JST)
         run: |
-          # JST時間の取得 (UTC + 9時間)
+          curl -sS -X GET "$APP_URL/cron/morning" \
+            -H "Authorization: Bearer $CRON_SECRET"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  coaching-evening:
+    if: github.event.schedule == '0 13 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.endpoint == 'evening')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /cron/evening (22:00 JST)
+        run: |
+          curl -sS -X GET "$APP_URL/cron/evening" \
+            -H "Authorization: Bearer $CRON_SECRET"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  coaching-progress:
+    if: github.event.schedule == '0 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.endpoint == 'progress')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check JST window and trigger /cron/progress (07:00–22:00 JST)
+        run: |
           JST_HOUR=$(TZ=Asia/Tokyo date +%H)
-          echo "Current JST Hour: $JST_HOUR"
-          
-          # 10:00 〜 21:30 の範囲内かチェック (10時〜21時)
-          if [ "$JST_HOUR" -ge 10 ] && [ "$JST_HOUR" -le 21 ]; then
-            echo "Within coaching time window (10:00 - 21:30 JST). Triggering endpoint..."
-            
-            HEADERS=()
-            if [ -n "${{ secrets.CRON_SECRET }}" ]; then
-              HEADERS=(-H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
-            fi
-            
-            curl -X GET "${{ secrets.APP_URL }}/cron/accountability" "${HEADERS[@]}"
+          echo "Current JST hour: $JST_HOUR"
+          if [ "$JST_HOUR" -ge 7 ] && [ "$JST_HOUR" -le 22 ]; then
+            echo "Within progress window (07:00–22:00 JST). Triggering..."
+            curl -sS -X GET "$APP_URL/cron/progress" \
+              -H "Authorization: Bearer $CRON_SECRET"
           else
-            echo "Outside coaching hours. Skipping trigger."
+            echo "Outside progress window. Skipping."
           fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
