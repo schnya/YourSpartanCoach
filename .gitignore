@@ -18,6 +18,7 @@ memory/prompt_*.md
 !memory/prompt_*.sample.md
 memory/daily/*.md
 !memory/daily/sample.md
+memory/notes/
 
 # Pulled production daily logs (private; synced locally via scripts/pullLogs.mjs)
 # Source of truth is Upstash Redis, so local copies are cache only.

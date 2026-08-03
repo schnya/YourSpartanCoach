@@ -62,7 +62,7 @@ export async function setUserState(
 const DEFAULT_DISCIPLINE_SCORE = 100;
 const localScoreCache = new Map<string, number>();
 
-export async function getDisciplineScore(userId: string): Promise<number> {
+export async function getMomentumScore(userId: string): Promise<number> {
 	const redis = getRedisClient();
 	if (redis) {
 		try {
@@ -80,7 +80,7 @@ export async function updateDisciplineScore(
 	userId: string,
 	delta: number,
 ): Promise<number> {
-	const current = await getDisciplineScore(userId);
+	const current = await getMomentumScore(userId);
 	const updated = Math.max(0, Math.min(100, current + delta));
 	localScoreCache.set(userId, updated);
 

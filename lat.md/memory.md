@@ -20,7 +20,7 @@ LINE Bot におけるセッション状態や会話履歴、タスク情報を�
 
 日々のタスクや HP の状態変化、Bot が送信した朝夕のメッセージ内容などを日付単位のログとして管理する仕組みです。
 
-[[src/shared/memory/dailyLogStore.ts#readDailyLog]] や [[src/shared/memory/dailyLogStore.ts#saveDailyLog]] によって Redis やローカル Markdown のログを相互に同期し、[[src/shared/memory/dailyLogStore.ts#carryOverPendingTasks]] が前日の未完了タスクをキャリーオーバーします。さらに、[[src/shared/memory/fsmStore.ts#getUserState]] や [[src/shared/memory/fsmStore.ts#setUserState]] による FSM 状態の更新や、[[src/shared/memory/fsmStore.ts#getDisciplineScore]] および [[src/shared/memory/fsmStore.ts#updateDisciplineScore]] による 0〜100 の範囲でクランプされた規律スコアの変化もデイリーログの Status セクションに自動的に反映・追記されます。
+[[src/shared/memory/dailyLogStore.ts#readDailyLog]] や [[src/shared/memory/dailyLogStore.ts#saveDailyLog]] によって Redis やローカル Markdown のログを相互に同期し、[[src/shared/memory/dailyLogStore.ts#carryOverPendingTasks]] が前日の未完了タスクをキャリーオーバーします。さらに、[[src/shared/memory/fsmStore.ts#getUserState]] や [[src/shared/memory/fsmStore.ts#setUserState]] による FSM 状態の更新や、[[src/shared/memory/fsmStore.ts#getMomentumScore]] および [[src/shared/memory/fsmStore.ts#updateDisciplineScore]] による 0〜100 の範囲でクランプされた規律スコアの変化もデイリーログの Status セクションに自動的に反映・追記されます。
 
 ### Local Log Sync & Pruning
 

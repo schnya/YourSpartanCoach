@@ -1,7 +1,7 @@
 import { getTodayDateString, readDailyLog } from "../../shared/memory/dailyLogStore.js";
-import { getDisciplineScore } from "../../shared/memory/fsmStore.js";
+import { getMomentumScore } from "../../shared/memory/fsmStore.js";
 import { readPromptTemplate, readUserProfile } from "../../shared/memory/profileStore.js";
-import { MASTER_SYSTEM_PROMPT, SUB_PROMPT_MORNING } from "./spartanPrompts.js";
+import { MASTER_SYSTEM_PROMPT, SAFETY_GUARDRAILS, SUB_PROMPT_HABIT_LOOP, SUB_PROMPT_MORNING } from "./spartanPrompts.js";
 
 // Pure helper function for template variable interpolation
 export function formatTemplate(
@@ -21,7 +21,7 @@ export async function buildSpartanPrompt(
 	googleTasks?: { id: string; title: string }[],
 ): Promise<string> {
 	const profile = await readUserProfile(userId);
-	const score = await getDisciplineScore(userId);
+	const score = await getMomentumScore(userId);
 
 	// Extract name and goal from profile
 	const nameMatch = profile.match(/(?:名前|名前:)[:：\s]*(.+)/i);
@@ -36,7 +36,7 @@ export async function buildSpartanPrompt(
 	// Build master prompt
 	const prompt = MASTER_SYSTEM_PROMPT.replace("{{USER_NAME}}", userName)
 		.replace("{{PRIMARY_GOAL}}", primaryGoal)
-		.replace("{{DISCIPLINE_SCORE}}", String(score))
+		.replace("{{MOMENTUM_SCORE}}", String(score))
 		.replace("{{STAKED_COMMITMENT_DETAILS}}", stakedDetails);
 
 	// Append modular sub-prompt based on context.
@@ -72,5 +72,5 @@ export async function buildSpartanPrompt(
 		logContext = `\n\n# Today's Action Log\n${todayLog}`;
 	}
 
-	return `${prompt}${taskContext}${logContext}\n\n---\n\n${subPrompt}`;
+	return `${prompt}${taskContext}${logContext}\n\n---\n\n${SUB_PROMPT_HABIT_LOOP}\n\n${SAFETY_GUARDRAILS}\n\n${subPrompt}`;
 }
