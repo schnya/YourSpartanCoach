@@ -13,7 +13,15 @@ export interface GoogleTaskItem {
 	status?: string;
 }
 
-export async function getAccessToken(): Promise<string | null> {
+export interface GetAccessTokenOptions {
+	// invalid_grant（トークン失効/取り消し）を検知したときに呼ばれる。
+	// 失効時に bot へ警告を飛ばすフックとして使う。
+	onInvalidGrant?: (detail: string) => void;
+}
+
+export async function getAccessToken(
+	opts?: GetAccessTokenOptions,
+): Promise<string | null> {
 	const clientId = process.env.GOOGLE_CLIENT_ID;
 	const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 	const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
@@ -42,6 +50,10 @@ export async function getAccessToken(): Promise<string | null> {
 			console.error(
 				`[Google Tasks Token Error]: HTTP ${res.status} - ${errText}`,
 			);
+			// トークン失効/取り消し: 再認証が必要。
+			if (res.status === 400 && /invalid_grant/.test(errText)) {
+				opts?.onInvalidGrant?.(errText);
+			}
 			return null;
 		}
 
@@ -144,9 +156,11 @@ export async function completeGoogleTask(taskId: string): Promise<boolean> {
 	}
 }
 
-export async function listGoogleTasks(): Promise<GoogleTaskItem[]> {
+export async function listGoogleTasks(
+	opts?: GetAccessTokenOptions,
+): Promise<GoogleTaskItem[]> {
 	try {
-		const token = await getAccessToken();
+		const token = await getAccessToken(opts);
 		if (!token) return [];
 
 		const listId = process.env.GOOGLE_TASKS_LIST_ID || "@default";
@@ -205,4 +219,66 @@ export function findMatchingGoogleTask(
 	}
 
 	return null;
+}
+
+// トークン失効時に bot が LINE へ送る警告メッセージを組み立てる。
+function buildTokenExpiredMessage(detail: string): string {
+	return [
+		"⚠️ Google Tasks の認証トークンが失効（または取り消し）されました。",
+		"タスクの読み込みができなくなっています。以下で再認証してください:",
+		"",
+		"① ローカルでトークン再発行:",
+		"  deno run -A scripts/genGoogleToken.mjs",
+		"② 本番の環境変数 GOOGLE_REFRESH_TOKEN を新しい値に上書き",
+		"③ デプロイ反映: deno task deploy",
+		"",
+		`詳細: ${detail.slice(0, 200)}`,
+	].join("\n");
+}
+
+// LINE へトークン失効アラートを送る（token 未設定時はログのみ）。
+// cooldownHours 以内の再送は抑止して spam を防ぐ。
+const TOKEN_ALERT_COOLDOWN_MS = (() => {
+	const h = Number(process.env.GOOGLE_TOKEN_ALERT_COOLDOWN_HOURS);
+	return (Number.isFinite(h) && h > 0 ? h : 24) * 60 * 60 * 1000;
+})();
+
+let lastAlertAt = 0;
+
+export async function notifyTokenExpired(
+	userId: string | undefined,
+	detail: string,
+): Promise<void> {
+	const now = Date.now();
+	if (now - lastAlertAt < TOKEN_ALERT_COOLDOWN_MS) {
+		console.warn(
+			"[Google Tasks Token Expired]: クールダウン中のためアラート送信をスキップ。",
+		);
+		return;
+	}
+	lastAlertAt = now;
+
+	const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+	const targetId = userId || process.env.LINE_USER_ID;
+
+	if (!channelAccessToken || !targetId || targetId === "your_line_user_id_here") {
+		console.warn(
+			"[Google Tasks Token Expired Alert (mock)]:",
+			buildTokenExpiredMessage(detail),
+		);
+		return;
+	}
+
+	try {
+		const { messagingApi } = await import("@line/bot-sdk");
+		const client = new messagingApi.MessagingApiClient({ channelAccessToken });
+		await client.pushMessage({
+			to: targetId,
+			messages: [{ type: "text", text: buildTokenExpiredMessage(detail) }],
+		});
+		console.log(`[Google Tasks Token Expired Alert]: Sent to user=${targetId}`);
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.error("[Google Tasks Token Expired Alert Error]:", msg);
+	}
 }

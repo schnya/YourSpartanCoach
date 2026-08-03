@@ -1,11 +1,5 @@
-import { messagingApi } from "@line/bot-sdk";
 import { Hono } from "hono";
-import { listGoogleTasks } from "../../shared/integrations/google-tasks/googleTasks.js";
 import { generateMessage } from "../../shared/llm.js";
-import {
-	appendSentMessage,
-	getTodayDateString,
-} from "../../shared/memory/dailyLogStore.js";
 import {
 	getUserState,
 	setUserState,
@@ -13,71 +7,52 @@ import {
 } from "../../shared/memory/fsmStore.js";
 import { buildSpartanPrompt } from "../spartan-context/contextBuilder.js";
 import { buildProgressMessage } from "../spartan-context/progressMessage.js";
+import {
+	arraysDiffer,
+	computeDisciplineDelta,
+	computeRecentReply,
+	createLinePushClient,
+	fetchGoogleTasksWithIds,
+	handleCronRoute,
+	type PushClient,
+	sendAndRecordPush,
+} from "./helper.js";
+
+type Env = { Variables: { pushClient: PushClient } };
 
 // @lat: [[routing#Cron Trigger Routing]]
-const cronApp = new Hono();
+const cronApp = new Hono<Env>();
 
-// オプションの CRON_SECRET 認証ミドルウェア
+// 認証ミドルウェア + 依存性注入 (PushClient)
 cronApp.use("*", async (c, next) => {
 	const secret = process.env.CRON_SECRET;
-	if (secret) {
-		const authHeader = c.req.header("Authorization");
-		if (authHeader !== `Bearer ${secret}`) {
-			return c.text("Unauthorized", 401);
-		}
+	const authHeader = c.req.header("Authorization");
+
+	if (secret && authHeader !== `Bearer ${secret}`) {
+		return c.text("Unauthorized", 401);
 	}
+
+	// Hono Context に pushClient をセット（テスト時にオーバーライド可能）
+	if (!c.var.pushClient) {
+		c.set(
+			"pushClient",
+			createLinePushClient(process.env.LINE_CHANNEL_ACCESS_TOKEN),
+		);
+	}
+
 	await next();
 });
 
-async function sendPushMessage(userId: string, text: string) {
-	const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-
-	if (!channelAccessToken || !userId || userId === "your_line_user_id_here") {
-		console.warn(
-			"[Push Message Mock]: LINE credentials missing or default. Outputting to console:",
-		);
-		console.log(`>>> USER[${userId}]: ${text}`);
-		return;
-	}
-
-	const client = new messagingApi.MessagingApiClient({ channelAccessToken });
-
-	try {
-		await client.pushMessage({
-			to: userId,
-			messages: [{ type: "text", text }],
-		});
-		console.log(`[Push Message Success]: Sent to user=${userId}`);
-	} catch (err: unknown) {
-		const errorDetail = err instanceof Error ? err.message : String(err);
-		console.error(
-			`[LINE Push Message Error Detail for user=${userId}]:`,
-			errorDetail,
-		);
-	}
-}
-
-function getUserId(): string {
-	return process.env.LINE_USER_ID || "default_user";
-}
-
-function arraysDiffer(a: string[] = [], b: string[] = []): boolean {
-	if (a.length !== b.length) return true;
-	const setB = new Set(b);
-	return a.some((x) => !setB.has(x));
-}
+const getUserId = (): string => process.env.LINE_USER_ID || "default_user";
 
 // 朝の Cron (/cron/morning) - 毎朝07:00に発動
-// 承認フェーズなし: Google Tasks から当日タスクを取得し、AIが優先度付け＋
-// 行動経済学的意見を添えて push。その後 ACTIVE ループを開始。
 cronApp.get("/morning", async (c) => {
-	try {
+	const pushClient = c.get("pushClient");
+	const result = await handleCronRoute("Morning", async () => {
 		const userId = getUserId();
+		const { tasks: googleTasks, taskIds } =
+			await fetchGoogleTasksWithIds(userId);
 
-		const googleTasks = await listGoogleTasks();
-		const taskIds = googleTasks.map((t) => t.id).filter(Boolean) as string[];
-
-		// スナップショット保存 + 日次フラグリセット + ACTIVE化
 		await setUserState(userId, "ACTIVE", {
 			taskSnapshot: taskIds,
 			tasksChangedToday: false,
@@ -89,75 +64,55 @@ cronApp.get("/morning", async (c) => {
 		const prompt = await buildSpartanPrompt(userId, "MORNING", googleTasks);
 		const morningMsg = await generateMessage(prompt);
 
-		await appendSentMessage(
-			userId,
-			getTodayDateString(),
-			"Morning",
-			morningMsg,
-		);
-		await sendPushMessage(userId, morningMsg);
+		await sendAndRecordPush(pushClient, userId, "Morning", morningMsg);
 
-		return c.json({
-			success: true,
+		return {
 			type: "morning",
 			message: morningMsg,
 			googleTasksCount: googleTasks.length,
-		});
-	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
-		console.error("[Cron Morning Error]:", message);
-		return c.json({ success: false, error: message }, 500);
-	}
+		};
+	});
+
+	return result.success ? c.json(result) : c.json(result, 500);
 });
 
 // 60分おき進捗確認 Cron (/cron/progress) - 0 7-22 * * * で発動
-// ACTIVE なら進捗メッセージを push。直近60分で返信もタスク増減もなければ
-// IDLE（LINE未確認ステータス）に切り替え、以降は push を停止する。
 cronApp.get("/progress", async (c) => {
-	try {
+	const pushClient = c.get("pushClient");
+	const result = await handleCronRoute("Progress", async () => {
 		const userId = getUserId();
 		const stateData = await getUserState(userId);
 
 		// IDLE（未確認中）: push せず、webhook で復帰されるまで待機
 		if (stateData.state !== "ACTIVE") {
-			return c.json({
-				success: true,
+			return {
 				state: stateData.state,
 				msg: "Inactive (LINE unchecked). Skipping progress push.",
-			});
+			};
 		}
 
-		const googleTasks = await listGoogleTasks();
-		const currentIds = googleTasks.map((t) => t.id).filter(Boolean) as string[];
-		// タスクの増減（新規追加＋完了）を検知
-		const snapshot = stateData.metadata?.currentTaskSnapshot || stateData.metadata?.taskSnapshot || [];
+		const { tasks: googleTasks, taskIds: currentIds } =
+			await fetchGoogleTasksWithIds(userId);
+
+		const snapshot =
+			stateData.metadata?.currentTaskSnapshot ||
+			stateData.metadata?.taskSnapshot ||
+			[];
 		const tasksChanged = arraysDiffer(snapshot, currentIds);
 
-		// 直近60分のユーザー返信を判定（前回push以降に返信があれば recentReply=true）
-		const lastReply = stateData.metadata?.lastUserReplyAt
-			? new Date(stateData.metadata.lastUserReplyAt)
-			: null;
-		const lastPush = stateData.metadata?.lastProgressPushAt
-			? new Date(stateData.metadata.lastProgressPushAt)
-			: null;
-		const recentReply = !!lastReply && !!lastPush && lastReply > lastPush;
+		const recentReply = computeRecentReply(
+			stateData.metadata?.lastUserReplyAt,
+			stateData.metadata?.lastProgressPushAt,
+		);
 
-		// 返信もタスク増減もなければ今回も push せず IDLE に移行する
 		const shouldPush = recentReply || tasksChanged;
 		let progressMsg = "";
 
 		if (shouldPush) {
 			progressMsg = buildProgressMessage(googleTasks);
-			await appendSentMessage(
-				userId,
-				getTodayDateString(),
-				"Progress",
-				progressMsg,
-			);
-			await sendPushMessage(userId, progressMsg);
+			await sendAndRecordPush(pushClient, userId, "Progress", progressMsg);
 		}
 
-		// 返信も増減もなければ IDLE 化、状態とメタデータを一括更新
 		const nextActive = shouldPush;
 		await setUserState(userId, nextActive ? "ACTIVE" : "IDLE", {
 			...stateData.metadata,
@@ -166,60 +121,45 @@ cronApp.get("/progress", async (c) => {
 			lastProgressPushAt: new Date().toISOString(),
 		});
 
-		return c.json({
-			success: true,
+		return {
 			type: "progress",
 			pushed: shouldPush,
 			message: progressMsg,
 			nextState: nextActive ? "ACTIVE" : "IDLE",
 			recentReply,
 			tasksChanged,
-		});
-	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
-		console.error("[Cron Progress Error]:", message);
-		return c.json({ success: false, error: message }, 500);
-	}
+		};
+	});
+
+	return result.success ? c.json(result) : c.json(result, 500);
 });
 
 // 夜の Cron (/cron/evening) - 毎夜22:00に発動
-// 日中のタスク増減とLINE返信の有無で加点/減点を判定し、スコアに基づくトーンで総括を LLM 生成して push。
 cronApp.get("/evening", async (c) => {
-	try {
+	const pushClient = c.get("pushClient");
+	const result = await handleCronRoute("Evening", async () => {
 		const userId = getUserId();
-		const today = getTodayDateString();
 		const stateData = await getUserState(userId);
 
 		const tasksChanged = stateData.metadata?.tasksChangedToday || false;
 		const replied = stateData.metadata?.repliedToday || false;
 
-		let delta = 0;
-		if (tasksChanged && replied) delta = 5;
-		else if (!tasksChanged && !replied) delta = -5;
-
+		const delta = computeDisciplineDelta(tasksChanged, replied);
 		if (delta !== 0) {
 			await updateDisciplineScore(userId, delta);
 		}
 		await setUserState(userId, "IDLE"); // 翌日のリセット
 
-		const googleTasks = await listGoogleTasks();
+		const { tasks: googleTasks } = await fetchGoogleTasksWithIds(userId);
 		const prompt = await buildSpartanPrompt(userId, "EVENING", googleTasks);
 		const eveningMsg = await generateMessage(prompt);
 
-		await appendSentMessage(userId, today, "Evening", eveningMsg);
-		await sendPushMessage(userId, eveningMsg);
+		await sendAndRecordPush(pushClient, userId, "Evening", eveningMsg);
 
-		return c.json({
-			success: true,
-			type: "evening",
-			message: eveningMsg,
-			delta,
-		});
-	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
-		console.error("[Cron Evening Error]:", message);
-		return c.json({ success: false, error: message }, 500);
-	}
+		return { type: "evening", message: eveningMsg, delta };
+	});
+
+	return result.success ? c.json(result) : c.json(result, 500);
 });
 
 export default cronApp;
