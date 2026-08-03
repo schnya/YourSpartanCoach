@@ -14,10 +14,12 @@ on:
     # Progress check — every hour from 07:00 to 22:00 JST.
     # UTC spans 22:00(prev)..13:00; we gate the lower/upper hours via JST check below.
     - cron: "0 * * * *"
+    # Bath reminder — every 20 minutes. Gated to 19:00–02:59 JST in coaching-bath job.
+    - cron: "*/20 * * * *"
   workflow_dispatch:
     inputs:
       endpoint:
-        description: "Which endpoint to trigger (morning|progress|evening)"
+        description: "Which endpoint to trigger (morning|progress|evening|bath)"
         required: false
         default: "progress"
 
@@ -60,6 +62,25 @@ jobs:
               -H "Authorization: Bearer $CRON_SECRET"
           else
             echo "Outside progress window. Skipping."
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  coaching-bath:
+    if: github.event.schedule == '*/20 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.endpoint == 'bath')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check JST window and trigger /cron/bath (19:00–02:59 JST)
+        run: |
+          JST_HOUR=$(TZ=Asia/Tokyo date +%H)
+          echo "Current JST hour: $JST_HOUR"
+          if [ "$JST_HOUR" -ge 19 ] || [ "$JST_HOUR" -lt 3 ]; then
+            echo "Within bath window (19:00–02:59 JST). Triggering..."
+            curl -sS -X GET "$APP_URL/cron/bath" \
+              -H "Authorization: Bearer $CRON_SECRET"
+          else
+            echo "Outside bath window. Skipping."
           fi
         env:
           APP_URL: ${{ secrets.APP_URL }}

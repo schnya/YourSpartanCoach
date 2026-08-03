@@ -77,11 +77,6 @@ export const BATH_REMINDER_MESSAGE = `一刻も早くスマホを置いて風呂
 スマホは置いてけよ。お風呂や散歩のような「適度に没入できる作業」が閃きを生み出すって科学的に判明してるねん。
 `;
 
-export const isBathReminderHour = (date = new Date()): boolean => {
-	const hour = Number(format(date, "H", { in: TZ_JST }));
-	return hour >= 19 || hour < 3;
-};
-
 // 朝の Cron (/cron/morning) - 毎朝07:00に発動
 cronApp.get("/morning", async (c) => {
 	const lineApi = c.get("pushClient");
@@ -182,17 +177,10 @@ cronApp.get("/progress", async (c) => {
 	return result.success ? c.json(result) : c.json(result, 500);
 });
 
-// 外部スケジューラから20分おきに呼び出す（JST 19:00〜21:40）。LLMは使用しない。
+// 外部スケジューラ（GitHub Actions等）から呼び出す。時間帯の制御は呼び出し側で行う。LLMは使用しない。
 cronApp.get("/bath", async (c) => {
 	const lineApi = c.get("pushClient");
 	const result = await handleCronRoute("Bath", async () => {
-		if (!isBathReminderHour()) {
-			return {
-				type: "bath",
-				pushed: false,
-				message: "Outside bath reminder window.",
-			};
-		}
 		const userId = getUserId();
 		const stateData = await getUserState(userId);
 		if (stateData.metadata?.bathCompletedAt === getBathReminderDay()) {
