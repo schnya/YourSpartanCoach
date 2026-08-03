@@ -66,8 +66,16 @@ export const shouldSendNoResponseNudge = (
 
 const NO_RESPONSE_NUDGE =
 	"今日の一歩は、小さくて大丈夫です。できそうなことを1つだけ試してみましょう。";
-export const BATH_REMINDER_MESSAGE =
-	"そろそろ入浴の時間です。就寝の1〜2時間前に40〜42.5℃の温浴を10分ほど行うと、寝つきや睡眠効率の改善が期待されています。無理のない範囲で、今日はお風呂に入りましょう。";
+export const BATH_REMINDER_MESSAGE = `一刻も早くスマホを置いて風呂入れ！！！
+
+今からあがいても明日の生産性・メンタルがゴリゴリ削られる負のスパイラルに入るだけ。今日の自分はもう死んだ。諦めろ。
+
+特に意志が弱い自制心ゼロの奴ほど、睡眠の効果がデカい。お前や
+
+風呂で一回体温を爆上げしてそのあと一気に冷やしたら眠気スイッチONや（サーカディアンリズム）。手足ポカポカの状態で布団に入ったらマジで瞬殺で飛ぶから。
+
+スマホは置いてけよ。お風呂や散歩のような「適度に没入できる作業」が閃きを生み出すって科学的に判明してるねん。
+`;
 
 export const isBathReminderHour = (date = new Date()): boolean => {
 	const hour = Number(format(date, "H", { in: TZ_JST }));
