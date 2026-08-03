@@ -6,9 +6,11 @@ Google Gemini API を活用し、ユーザーの状態に応じた動的な伴�
 
 ## State-Adaptive Prompting
 
-ユーザーの直近のエネルギー状態（HP）や FSM 状態に合わせて、プロンプトのトーンやタスク合格ラインを動的に変更する仕組みです。
+ユーザーの直近のエネルギー状態や FSM 状態に合わせて、プロンプトのトーンやタスク合格ラインを動的に変更する仕組みです。
 
-[[src/features/spartan-context/contextBuilder.ts#buildSpartanPrompt]] にて、現在の FSM 状態（IDLE/PENDING/SCHEDULED/EXECUTING/REPORTING/ESCAPED）に対応する専用の軽量サブプロンプト（Morning, Scheduled, Proof, Penalty）をマスターシステムプロンプトに動的注入し、指示の緩み（Instruction Drift）を防止する Task Routing 構造を提供します。また「追いLINE無しの原則（Non-Chase Policy）」をプロンプト規則として組み込んでいます。
+[[src/features/spartan-context/contextBuilder.ts#buildSpartanPrompt]] にて、現在の FSM 状態（IDLE/ACTIVE）に対応する専用の軽量サブプロンプト（Morning, Evening, Progress）をマスターシステムプロンプトに動的注入し、指示の緩み（Instruction Drift）を防止する Task Routing 構造を提供します。また「追いLINE無しの原則（Non-Chase Policy）」をプロンプト規則として組み込んでいます。
+
+> **習慣化特化への移行:** トーンは一律で「共感的・スモールステップ」に統一されました。かつての「規律スコア高 → 鬼軍曹トーン」のような自己批判を助長し得るグラデーションは廃止されています。詳細は [[habit-formation|習慣化特化設計]] を参照。
 
 ## Gemini API Client
 
