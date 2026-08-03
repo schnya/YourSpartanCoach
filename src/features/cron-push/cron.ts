@@ -1,5 +1,10 @@
+import { format } from "date-fns";
 import { Hono } from "hono";
 import { generateMessage } from "../../shared/llm.js";
+import {
+	getToday,
+	recordSentMessage,
+} from "../../shared/memory/dailyLogStore.js";
 import {
 	getUserState,
 	setUserState,
@@ -13,10 +18,11 @@ import {
 	computeRecentReply,
 	createLinePushClient,
 	fetchGoogleTasksWithIds,
+	getBathReminderDay,
 	handleCronRoute,
+	isStale,
 	type PushClient,
-	sendAndRecordPush,
-	shouldSendNoResponseNudge,
+	TZ_JST,
 } from "./helper.js";
 
 type Env = { Variables: { pushClient: PushClient } };
@@ -45,12 +51,32 @@ cronApp.use("*", async (c, next) => {
 });
 
 const getUserId = (): string => process.env.LINE_USER_ID || "default_user";
+export const shouldSendNoResponseNudge = (
+	lastUserReplyAt: string | undefined,
+	lastNudgeAt: string | undefined,
+	now = Date.now(),
+): boolean => {
+	if (!lastUserReplyAt) return false;
+
+	const userHasBeenSilent = isStale(lastUserReplyAt, now);
+	const nudgeIsStale = isStale(lastNudgeAt, now);
+
+	return userHasBeenSilent && nudgeIsStale;
+};
+
 const NO_RESPONSE_NUDGE =
 	"今日の一歩は、小さくて大丈夫です。できそうなことを1つだけ試してみましょう。";
+export const BATH_REMINDER_MESSAGE =
+	"そろそろ入浴の時間です。就寝の1〜2時間前に40〜42.5℃の温浴を10分ほど行うと、寝つきや睡眠効率の改善が期待されています。無理のない範囲で、今日はお風呂に入りましょう。";
+
+export const isBathReminderHour = (date = new Date()): boolean => {
+	const hour = Number(format(date, "H", { in: TZ_JST }));
+	return hour >= 19 || hour < 3;
+};
 
 // 朝の Cron (/cron/morning) - 毎朝07:00に発動
 cronApp.get("/morning", async (c) => {
-	const pushClient = c.get("pushClient");
+	const lineApi = c.get("pushClient");
 	const result = await handleCronRoute("Morning", async () => {
 		const userId = getUserId();
 		const { tasks: googleTasks, taskIds } =
@@ -67,7 +93,9 @@ cronApp.get("/morning", async (c) => {
 		const prompt = await buildSpartanPrompt(userId, "MORNING", googleTasks);
 		const morningMsg = await generateMessage(prompt);
 
-		await sendAndRecordPush(pushClient, userId, "Morning", morningMsg);
+		// 内部ストレージ(Redis / MDファイル)に送信ログを記録
+		await recordSentMessage(userId, getToday(), "Morning", morningMsg);
+		await lineApi.pushMessage(userId, morningMsg);
 
 		return {
 			type: "morning",
@@ -81,7 +109,7 @@ cronApp.get("/morning", async (c) => {
 
 // 60分おき進捗確認 Cron (/cron/progress) - 0 7-22 * * * で発動
 cronApp.get("/progress", async (c) => {
-	const pushClient = c.get("pushClient");
+	const lineApi = c.get("pushClient");
 	const result = await handleCronRoute("Progress", async () => {
 		const userId = getUserId();
 		const stateData = await getUserState(userId);
@@ -120,7 +148,7 @@ cronApp.get("/progress", async (c) => {
 			progressMsg = shouldNudge
 				? NO_RESPONSE_NUDGE
 				: buildProgressMessage(googleTasks);
-			await sendAndRecordPush(pushClient, userId, "Progress", progressMsg);
+			await lineApi.pushMessage(userId, progressMsg);
 		}
 
 		const nextActive = shouldPush;
@@ -146,9 +174,39 @@ cronApp.get("/progress", async (c) => {
 	return result.success ? c.json(result) : c.json(result, 500);
 });
 
+// 外部スケジューラから20分おきに呼び出す（JST 19:00〜21:40）。LLMは使用しない。
+cronApp.get("/bath", async (c) => {
+	const lineApi = c.get("pushClient");
+	const result = await handleCronRoute("Bath", async () => {
+		if (!isBathReminderHour()) {
+			return {
+				type: "bath",
+				pushed: false,
+				message: "Outside bath reminder window.",
+			};
+		}
+		const userId = getUserId();
+		const stateData = await getUserState(userId);
+		if (stateData.metadata?.bathCompletedAt === getBathReminderDay()) {
+			return {
+				type: "bath",
+				pushed: false,
+				message: "Bath already completed.",
+			};
+		}
+		const message = BATH_REMINDER_MESSAGE;
+		// LINE Messaging API 経由でユーザーの端末へ実際にメッセージをプッシュ送信
+		await lineApi.pushMessage(userId, message, {
+			quickReplyLabel: "入った",
+		});
+		return { type: "bath", pushed: true, message };
+	});
+	return result.success ? c.json(result) : c.json(result, 500);
+});
+
 // 夜の Cron (/cron/evening) - 毎夜22:00に発動
 cronApp.get("/evening", async (c) => {
-	const pushClient = c.get("pushClient");
+	const lineApi = c.get("pushClient");
 	const result = await handleCronRoute("Evening", async () => {
 		const userId = getUserId();
 		const stateData = await getUserState(userId);
@@ -166,7 +224,9 @@ cronApp.get("/evening", async (c) => {
 		const prompt = await buildSpartanPrompt(userId, "EVENING", googleTasks);
 		const eveningMsg = await generateMessage(prompt);
 
-		await sendAndRecordPush(pushClient, userId, "Evening", eveningMsg);
+		// 内部ストレージ(Redis / MDファイル)に送信ログを記録
+		await recordSentMessage(userId, getToday(), "Evening", eveningMsg);
+		await lineApi.pushMessage(userId, eveningMsg);
 
 		return { type: "evening", message: eveningMsg, delta };
 	});

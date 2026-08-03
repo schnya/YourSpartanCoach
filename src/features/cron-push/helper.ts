@@ -1,12 +1,10 @@
-import { messagingApi } from "@line/bot-sdk";
+import { tz } from "@date-fns/tz";
+import { messagingApi, type QuickReply } from "@line/bot-sdk";
+import { format, subDays } from "date-fns";
 import {
 	listGoogleTasks,
 	notifyTokenExpired,
 } from "../../shared/integrations/google-tasks/googleTasks.js";
-import {
-	appendSentMessage,
-	getTodayDateString,
-} from "../../shared/memory/dailyLogStore.js";
 
 export const extractTaskIds = (
 	tasks: Array<{ id?: string | null }>,
@@ -24,19 +22,20 @@ export const computeRecentReply = (
 	return !!lastReply && !!lastPush && lastReply > lastPush;
 };
 
+export const TZ_JST = tz("Asia/Tokyo");
+
+export const getBathReminderDay = (date = new Date()): string => {
+	const hour = Number(format(date, "H", { in: TZ_JST }));
+	const targetDate = hour < 3 ? subDays(date, 1) : date;
+	return format(targetDate, "yyyy-MM-dd", { in: TZ_JST });
+};
+
 export const NUDGE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
-export const shouldSendNoResponseNudge = (
-	lastUserReplyAt: string | undefined,
-	lastNudgeAt: string | undefined,
-	now = Date.now(),
-): boolean => {
-	if (!lastUserReplyAt) return false;
-	const lastReply = new Date(lastUserReplyAt).getTime();
-	if (!Number.isFinite(lastReply) || now - lastReply < NUDGE_INTERVAL_MS) return false;
-	if (!lastNudgeAt) return true;
-	const lastNudge = new Date(lastNudgeAt).getTime();
-	return !Number.isFinite(lastNudge) || now - lastNudge >= NUDGE_INTERVAL_MS;
+export const isStale = (isoDate: string | undefined, now: number): boolean => {
+	if (!isoDate) return true;
+	const time = new Date(isoDate).getTime();
+	return !Number.isFinite(time) || now - time >= NUDGE_INTERVAL_MS;
 };
 
 export const computeDisciplineDelta = (
@@ -50,18 +49,32 @@ export const computeDisciplineDelta = (
 
 // --- インターフェース ＆ DI クライアント ---
 
-export interface PushClient {
-	pushMessage(userId: string, text: string): Promise<void>;
+export function buildQuickReply(label?: string): QuickReply | undefined {
+	if (!label) return undefined;
+	return {
+		items: [
+			{ type: "action", action: { type: "message", label, text: label } },
+		],
+	};
 }
 
+export interface PushClient {
+	pushMessage(
+		userId: string,
+		text: string,
+		options?: { quickReplyLabel?: string },
+	): Promise<void>;
+}
+
+// クロージャ + オブジェクトリテラルのファクトリ関
 export function createLinePushClient(channelAccessToken?: string): PushClient {
+	const client = channelAccessToken
+		? new messagingApi.MessagingApiClient({ channelAccessToken })
+		: null;
+
 	return {
-		async pushMessage(userId: string, text: string) {
-			if (
-				!channelAccessToken ||
-				!userId ||
-				userId === "your_line_user_id_here"
-			) {
+		async pushMessage(userId: string, text: string, options) {
+			if (!client || !userId || userId === "your_line_user_id_here") {
 				console.warn(
 					"[Push Message Mock]: LINE credentials missing or default. Outputting to console:",
 				);
@@ -69,14 +82,16 @@ export function createLinePushClient(channelAccessToken?: string): PushClient {
 				return;
 			}
 
-			const client = new messagingApi.MessagingApiClient({
-				channelAccessToken,
-			});
-
 			try {
 				await client.pushMessage({
 					to: userId,
-					messages: [{ type: "text", text }],
+					messages: [
+						{
+							type: "text",
+							text,
+							quickReply: buildQuickReply(options?.quickReplyLabel),
+						},
+					],
 				});
 				console.log(`[Push Message Success]: Sent to user=${userId}`);
 			} catch (err: unknown) {
@@ -85,12 +100,13 @@ export function createLinePushClient(channelAccessToken?: string): PushClient {
 					`[LINE Push Message Error Detail for user=${userId}]:`,
 					errorDetail,
 				);
+				throw err;
 			}
 		},
 	};
 }
 
-export function createInMemoryPushClient(
+function _createInMemoryPushClient(
 	sentLog: { userId: string; text: string }[],
 ): PushClient {
 	return {
@@ -107,16 +123,6 @@ export async function fetchGoogleTasksWithIds(userId: string) {
 		onInvalidGrant: (detail) => void notifyTokenExpired(userId, detail),
 	});
 	return { tasks, taskIds: extractTaskIds(tasks) };
-}
-
-export async function sendAndRecordPush(
-	pushClient: PushClient,
-	userId: string,
-	category: "Morning" | "Progress" | "Evening",
-	message: string,
-) {
-	await appendSentMessage(userId, getTodayDateString(), category, message);
-	await pushClient.pushMessage(userId, message);
 }
 
 export async function handleCronRoute(

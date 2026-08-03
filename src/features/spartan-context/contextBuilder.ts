@@ -1,7 +1,15 @@
-import { getTodayDateString, readDailyLog } from "../../shared/memory/dailyLogStore.js";
+import { getToday, readDailyLog } from "../../shared/memory/dailyLogStore.js";
 import { getMomentumScore } from "../../shared/memory/fsmStore.js";
-import { readPromptTemplate, readUserProfile } from "../../shared/memory/profileStore.js";
-import { MASTER_SYSTEM_PROMPT, SAFETY_GUARDRAILS, SUB_PROMPT_HABIT_LOOP, SUB_PROMPT_MORNING } from "./spartanPrompts.js";
+import {
+	readPromptTemplate,
+	readUserProfile,
+} from "../../shared/memory/profileStore.js";
+import {
+	MASTER_SYSTEM_PROMPT,
+	SAFETY_GUARDRAILS,
+	SUB_PROMPT_HABIT_LOOP,
+	SUB_PROMPT_MORNING,
+} from "./spartanPrompts.js";
 
 // Pure helper function for template variable interpolation
 export function formatTemplate(
@@ -68,7 +76,7 @@ export async function buildSpartanPrompt(
 	// can react to each entry instead of being an empty recap.
 	let logContext = "";
 	if (state === "EVENING") {
-		const todayLog = await readDailyLog(userId, getTodayDateString());
+		const todayLog = await readDailyLog(userId, getToday());
 		logContext = `\n\n# Today's Action Log\n${todayLog}`;
 	}
 

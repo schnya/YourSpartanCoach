@@ -30,7 +30,7 @@ async function runContextBuilderTests() {
 		{ id: "t2", title: "読書30分" },
 	]);
 	assert.ok(progressPrompt.includes("読書30分"));
-	assert.ok(progressPrompt.includes("50-Minute Progress Check-in"));
+	assert.ok(progressPrompt.includes("Habit-Formation 4-Step Loop"));
 
 	// Test 4: buildSpartanPrompt for EVENING state
 	console.log("- Test 4: Testing buildSpartanPrompt for EVENING state...");

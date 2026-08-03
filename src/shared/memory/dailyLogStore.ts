@@ -9,18 +9,15 @@ import { getRedisClient } from "./redisClient.js";
 const MEMORY_DIR = path.resolve(process.cwd(), "memory");
 const TZ_JST = tz("Asia/Tokyo");
 
-export function getTodayDateString(): string {
-	return format(new Date(), "yyyy-MM-dd", { in: TZ_JST });
-}
+export const getToday = (): string =>
+	format(new Date(), "yyyy-MM-dd", { in: TZ_JST });
 
 const localProcessedEvents = new Set<string>();
 
 export async function checkAndMarkEventProcessed(
 	eventId: string,
 ): Promise<boolean> {
-	if (localProcessedEvents.has(eventId)) {
-		return true;
-	}
+	if (localProcessedEvents.has(eventId)) return true;
 
 	const redis = getRedisClient();
 	if (redis) {
@@ -104,15 +101,13 @@ export async function appendPlannedTask(
 		"## Scheduled Tasks\n- (None)",
 		`## Scheduled Tasks\n- ${taskText}`,
 	);
-	if (updatedLog !== currentLog) {
-		await saveDailyLog(userId, dateStr, updatedLog);
-	} else {
-		await saveDailyLog(
-			userId,
-			dateStr,
-			`${currentLog}\n- ${taskText} (Added at ${new Date().toISOString()})`,
-		);
-	}
+	await saveDailyLog(
+		userId,
+		dateStr,
+		updatedLog !== currentLog
+			? updatedLog
+			: `${currentLog}\n- ${taskText} (Added at ${new Date().toISOString()})`,
+	);
 }
 
 export async function appendRawUserLog(
@@ -130,7 +125,7 @@ export async function appendRawUserLog(
 	await saveDailyLog(userId, dateStr, updatedLog);
 }
 
-export async function appendSentMessage(
+export async function recordSentMessage(
 	userId: string,
 	dateStr: string,
 	title: string,

@@ -1,10 +1,11 @@
 import type { messagingApi } from "@line/bot-sdk";
 import {
 	appendRawUserLog,
-	appendSentMessage,
-	getTodayDateString,
+	getToday,
+	recordSentMessage,
 } from "../../shared/memory/dailyLogStore.js";
 import { getUserState, setUserState } from "../../shared/memory/fsmStore.js";
+import { getBathReminderDay } from "../cron-push/helper.js";
 
 async function replyText(
 	client: messagingApi.MessagingApiClient,
@@ -27,7 +28,7 @@ export async function handleUserLogMessage(
 	client: messagingApi.MessagingApiClient,
 	isImage = false,
 ) {
-	const today = getTodayDateString();
+	const today = getToday();
 	const logText = isImage ? "[画像を記録]" : rawText;
 	await appendRawUserLog(userId, today, logText);
 
@@ -38,10 +39,13 @@ export async function handleUserLogMessage(
 		...stateData.metadata,
 		repliedToday: true,
 		lastUserReplyAt: new Date().toISOString(),
+		...(rawText.trim() === "入った" && {
+			bathCompletedAt: getBathReminderDay(),
+		}),
 	});
 
 	const reply = "記録したよ 👍";
-	await appendSentMessage(userId, today, "Reply", reply);
+	await recordSentMessage(userId, today, "Reply", reply);
 	await replyText(client, replyToken, reply);
 
 	void wasIdle;
