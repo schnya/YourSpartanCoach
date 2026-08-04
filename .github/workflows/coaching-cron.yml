@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Trigger /cron/morning (07:00 JST)
         run: |
-          curl -sS -X GET "$APP_URL/cron/morning" \
+          curl -fsS -X GET "$APP_URL/cron/morning" -w "\nHTTP %{http_code}\n" \
             -H "Authorization: Bearer $CRON_SECRET"
         env:
           APP_URL: ${{ secrets.APP_URL }}
@@ -42,7 +42,7 @@ jobs:
     steps:
       - name: Trigger /cron/evening (22:00 JST)
         run: |
-          curl -sS -X GET "$APP_URL/cron/evening" \
+          curl -fsS -X GET "$APP_URL/cron/evening" -w "\nHTTP %{http_code}\n" \
             -H "Authorization: Bearer $CRON_SECRET"
         env:
           APP_URL: ${{ secrets.APP_URL }}
@@ -58,7 +58,7 @@ jobs:
           echo "Current JST hour: $JST_HOUR"
           if [ "$JST_HOUR" -ge 7 ] && [ "$JST_HOUR" -le 22 ]; then
             echo "Within progress window (07:00–22:00 JST). Triggering..."
-            curl -sS -X GET "$APP_URL/cron/progress" \
+            curl -fsS -X GET "$APP_URL/cron/progress" -w "\nHTTP %{http_code}\n" \
               -H "Authorization: Bearer $CRON_SECRET"
           else
             echo "Outside progress window. Skipping."
@@ -77,7 +77,7 @@ jobs:
           echo "Current JST hour: $JST_HOUR"
           if [ "$JST_HOUR" -ge 19 ] || [ "$JST_HOUR" -lt 3 ]; then
             echo "Within bath window (19:00–02:59 JST). Triggering..."
-            curl -sS -X GET "$APP_URL/cron/bath" \
+            curl -fsS -X GET "$APP_URL/cron/bath" -w "\nHTTP %{http_code}\n" \
               -H "Authorization: Bearer $CRON_SECRET"
           else
             echo "Outside bath window. Skipping."
