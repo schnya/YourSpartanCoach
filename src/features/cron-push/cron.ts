@@ -214,7 +214,12 @@ cronApp.get("/evening", async (c) => {
 		if (delta !== 0) {
 			await updateDisciplineScore(userId, delta);
 		}
-		await setUserState(userId, "IDLE"); // 翌日のリセット
+		// 翌日のリセット。ただし bathCompletedAt は翌03:00までは保持
+		// （深夜帯の /bath 再送ガードのため。getBathReminderDay は JST<3:00 を前日扱い）。
+		await setUserState(userId, "IDLE", {
+			...stateData.metadata,
+			repliedToday: false,
+		});
 
 		const { tasks: googleTasks } = await fetchGoogleTasksWithIds(userId);
 		const prompt = await buildSpartanPrompt(userId, "EVENING", googleTasks);
