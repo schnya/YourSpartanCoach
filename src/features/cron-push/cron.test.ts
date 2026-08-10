@@ -8,16 +8,18 @@ interface DenoTestContext {
 
 declare const Deno: {
   test: (name: string, fn: (t: DenoTestContext) => void | Promise<void>) => void;
+  env: {
+    set: (key: string, value: string) => void;
+    get: (key: string) => string | undefined;
+    toObject?: () => Record<string, string>;
+  };
 };
 
 //  env をモックして CRON_SECRET 認証と LINE push を通す
 const OLD_ENV = Deno.env.toObject?.() ?? {};
 function withMockEnv() {
-  // @ts-expect-error Deno.env の上書き（テスト用）
   Deno.env.set("CRON_SECRET", "test-secret");
-  // @ts-expect-error LINE クレデンシャル未設定なら push は console mock になる
   Deno.env.set("LINE_CHANNEL_ACCESS_TOKEN", "");
-  // @ts-expect-error 既定ユーザーで通す
   Deno.env.set("LINE_USER_ID", "test_user_evening");
 }
 

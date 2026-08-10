@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import bounceRelayApp from "./features/bounce-relay/bounceRelay.js";
 import cronApp from "./features/cron-push/cron.js";
 import webhookApp from "./features/webhook-reply/webhook.js";
 
@@ -62,7 +63,6 @@ app.get("/privacy", (c) => {
 // @lat: [[routing#Routing System]]
 app.route("/webhook", webhookApp);
 app.route("/cron", cronApp);
+app.route("/api", bounceRelayApp);
 
 export default app;
-
-

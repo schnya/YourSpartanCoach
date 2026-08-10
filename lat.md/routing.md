@@ -1,14 +1,20 @@
 # Routing System
 
-LINE Messaging API からの Webhook 受信と、Vercel Cron からのスケジュールプッシュ送信用 HTTP エンドポイントの構成について説明します。
+LINE Messaging API からの Webhook 受信、スケジュールプッシュ用 Cron、およびローカル内省・目標アライメント追跡サービス (bounce-ideas-off) 向けの中継エンドポイント構成について説明します。
 
-Hono を用いて、[[src/features/webhook-reply/webhook.ts]] の `/webhook` エンドポイントと [[src/features/cron-push/cron.ts]] の `/cron` エンドポイントを統合しています。
+Hono を用いて、[[src/features/webhook-reply/webhook.ts]] の `/webhook` エンドポイント、[[src/features/cron-push/cron.ts]] の `/cron` エンドポイント、および [[src/features/bounce-relay/bounceRelay.ts]] の `/api` エンドポイントを統合しています。
 
 ## Webhook Endpoint
 
-LINE Bot の主要な対話インターフェースとして、ユーザーメッセージの受信・解析、署名検証、重複排除、リプライ返信を担うエンドポイントです。
+LINE Bot の主要な対話インターフェースとして、ユーザーメッセージの受信・解析、署名検証、重複排除、リプライ返信および内省コマンドの中継キュー格納を担うエンドポイントです。
 
-[[src/features/webhook-reply/webhook.ts]] において、`validateSignature` を使用して `x-line-signature` の正当性を検証します。その後、LINE からのリトライによる多重処理を防ぐために `checkAndMarkEventProcessed` による重複排除を行い、FSM 状態（PENDING での朝の予定審査、REPORTING でのマルチモーダル成果物審査など）に応じた対話処理と状態遷移を制御して `MessagingApiClient` より応答します。
+[[src/features/webhook-reply/webhook.ts]] において、`validateSignature` を使用して `x-line-signature` の正当性を検証します。その後、LINE からのリトライによる多重処理を防ぐために `checkAndMarkEventProcessed` による重複排除を行います。テキストメッセージが内省コマンド（`/dev`, `/idea`, `/log`, `/notice`）で始まる場合は `BOUNCE_CMD_RE` にて検知し、Deno KV キューに保存して即座に 200 OK を返します。その他の通常対話は FSM 状態に応じた対話処理を制御して `MessagingApiClient` より応答します。
+
+## Bounce Relay Endpoint
+
+ローカルで動作する内省トラッカー (bounce-ideas-off) が LINE メッセージを受信・処理するための安全なデータ取得エンドポイントです。
+
+[[src/features/bounce-relay/bounceRelay.ts]] で定義される `POST /api/pull-bounce` エンドポイントは、`BOUNCE_SECRET` による認証を行い、Deno KV 内の `bounce_pending` キューに蓄積されたメッセージ（`id`, `userId`, `text`, `receivedAt`）をアトミックに取得・消去して返却します。
 
 ## Cron Trigger Routing
 

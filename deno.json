@@ -4,6 +4,7 @@
     "dev": "deno serve -A --env-file=.env --watch src/index.ts",
     "start": "deno serve -A --env-file=.env src/index.ts",
     "build": "deno check src/index.ts",
+    "test": "deno test -A --unstable-kv",
     "deploy": "deno run -A jsr:@deno/deployctl deploy --env-file=.env --prod"
   }
 }

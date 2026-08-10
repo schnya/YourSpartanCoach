@@ -6,11 +6,13 @@ import {
 } from "@line/bot-sdk";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { enqueueBounceMessage } from "../bounce-relay/bounceRelay.js";
 import { checkAndMarkEventProcessed } from "../../shared/memory/dailyLogStore.js";
 import { handleUserLogMessage } from "./messageHandlers.js";
 
 // @lat: [[routing#Webhook Endpoint]]
 const webhookApp = new Hono();
+export const BOUNCE_CMD_RE = /^\/(dev|idea|log|notice)(\s|$)/i;
 
 function getLineConfig(c: Context) {
 	const env = (c.env as Record<string, string>) || {};
@@ -63,6 +65,22 @@ export async function processSingleEvent(
 	// ユーザーからのテキスト・画像投稿はすべて「記録」として扱う
 	if (event.type === "message") {
 		const replyToken = "replyToken" in event ? event.replyToken : undefined;
+
+		if (event.message.type === "text") {
+			const text = event.message.text.trim();
+			if (BOUNCE_CMD_RE.test(text)) {
+				const receivedAt = new Date(event.timestamp).toISOString();
+				const id = crypto.randomUUID();
+				await enqueueBounceMessage({
+					id,
+					userId,
+					text,
+					receivedAt,
+				});
+				return;
+			}
+		}
+
 		if (!replyToken || !clients.client) return;
 
 		if (event.message.type === "text") {
