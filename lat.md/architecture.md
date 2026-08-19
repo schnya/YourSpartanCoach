@@ -1,6 +1,6 @@
 # System Architecture
 
-LINE Messaging API と Google Gemini API を統合し、ユーザーのエネルギー状態（HP）やパーソナリティに適応して伴走する、ステートフルな LINE 伴走システムの全体構成について説明します。
+Telegram Bot API と Google Gemini API を統合し、ユーザーのエネルギー状態（HP）やパーソナリティに適応して伴走する、ステートフルな Telegram 伴走システムの全体構成について説明します。
 
 このシステムは軽量でエッジ環境やサーバーレス環境に対応可能なフレームワークである Hono を基礎としており、Deno / Deno Deploy や Vercel 上でホスト可能です。
 
@@ -10,6 +10,6 @@ Hono アプリケーションを中心とし、フロントエンドのユーザ
 
 システムのメインエントリーポイントである [[src/index.ts]] から、リクエストは各ルーターに振り分けられます。
 
-- **ユーザー接点 / LINE API Gateway**: Webhook リクエストを送信し、プッシュまたはリプライを受け取ります。
+- **ユーザー接点 / Telegram Bot API Gateway**: Webhook リクエスト（Update）を送信し、プッシュまたはリプライを受け取ります。
 - **アプリケーションバックエンド (Hono)**: Webhook/Cron エンドポイントを提供し、会話文脈の生成や LLM による推論実行を統括します。
 - **データストレージレイヤー**: 本番環境（Vercel）では Upstash Redis、開発環境ではローカル Markdown ファイルを使用する透過的なストレージ構成です。

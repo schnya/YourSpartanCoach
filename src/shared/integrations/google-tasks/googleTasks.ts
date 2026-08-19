@@ -258,10 +258,10 @@ export async function notifyTokenExpired(
 	}
 	lastAlertAt = now;
 
-	const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-	const targetId = userId || process.env.LINE_USER_ID;
+	const channelAccessToken = process.env.TELEGRAM_BOT_TOKEN;
+	const targetId = userId || process.env.TELEGRAM_USER_ID;
 
-	if (!channelAccessToken || !targetId || targetId === "your_line_user_id_here") {
+	if (!channelAccessToken || !targetId || targetId === "your_telegram_user_id_here") {
 		console.warn(
 			"[Google Tasks Token Expired Alert (mock)]:",
 			buildTokenExpiredMessage(detail),
@@ -270,12 +270,11 @@ export async function notifyTokenExpired(
 	}
 
 	try {
-		const { messagingApi } = await import("@line/bot-sdk");
-		const client = new messagingApi.MessagingApiClient({ channelAccessToken });
-		await client.pushMessage({
-			to: targetId,
-			messages: [{ type: "text", text: buildTokenExpiredMessage(detail) }],
-		});
+		const { createTelegramClient } = await import(
+			"../../integrations/telegram/telegramClient.js"
+		);
+		const client = createTelegramClient(channelAccessToken);
+		await client.sendMessage(targetId, buildTokenExpiredMessage(detail));
 		console.log(`[Google Tasks Token Expired Alert]: Sent to user=${targetId}`);
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);

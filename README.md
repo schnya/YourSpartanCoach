@@ -1,6 +1,6 @@
-# LLM-Powered State-Adaptive Companion Bot (LINE Bot)
+# LLM-Powered State-Adaptive Companion Bot (Telegram Bot)
 
-LINE Messaging API と Google Gemini API を統合し、ユーザーのエネルギー状態（HP）やパーソナリティに適応して伴走する、ステートフルな LINE 伴走システムです。
+Telegram Bot API と Google Gemini API を統合し、ユーザーのエネルギー状態（HP）やパーソナリティに適応して伴走する、ステートフルな Telegram 伴走システムです。
 
 単なる「タスク管理」ではなく、「ユーザーのコンテキストに寄り添う生活の支援」を目的とし、Markdown ベースのナレッジモデルとサーバーレス構成を組み合わせて実装されています。
 
@@ -28,11 +28,11 @@ LINE Messaging API と Google Gemini API を統合し、ユーザーのエネル
 ```mermaid
 flowchart TD
   subgraph User_Touchpoint ["ユーザー接点"]
-    User["ユーザー (LINE client)"]
+    User["ユーザー (Telegram client)"]
   end
 
   subgraph Messaging_Gateway ["メッセージングゲートウェイ"]
-    LineAPI["LINE Messaging API"]
+    LineAPI["Telegram Bot API"]
   end
 
   subgraph App_Backend ["アプリケーションバックエンド (Deno Deploy / Hono)"]
@@ -83,7 +83,7 @@ flowchart TD
 * **Database / Cache**: Upstash Redis (Serverless Redis)
   * コネクションプールを必要としない REST API 経由の接続（HTTP-based Redis client）により、サーバーレス環境でのコールドスタート耐性を向上。
 * **LLM Engine**: Google Gemini API (`gemini-3.1-flash-lite`) via `@google/genai`
-* **SDK / API Integration**: `@line/bot-sdk`
+* **SDK / API Integration**: Telegram Bot API (fetch 直接呼び出し、SDK 不要)
 
 ---
 
@@ -123,10 +123,10 @@ deno task dev   # 依存は Deno が自動解決（npm: 指定インポート）
 # Server Config
 PORT=3000
 
-# LINE Credentials
-LINE_CHANNEL_ACCESS_TOKEN=your_token
-LINE_CHANNEL_SECRET=your_secret
-LINE_USER_ID=your_user_id
+# Telegram Credentials
+TELEGRAM_BOT_TOKEN=your_token
+TELEGRAM_USER_ID=your_user_id
+TELEGRAM_WEBHOOK_SECRET=your_long_random_secret
 
 # Google Gemini API
 GEMINI_API_KEY=your_gemini_key
@@ -149,7 +149,7 @@ deno task deploy
 # または明示的に
 deno run -A jsr:@deno/deployctl deploy --env-file=.env --prod
 ```
-環境変数 `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_USER_ID`, `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` を Deno Deploy のプロジェクト設定（Environment Variables）で設定します。
+環境変数 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_ID`, `TELEGRAM_WEBHOOK_SECRET`, `GEMINI_API_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` を Deno Deploy のプロジェクト設定（Environment Variables）で設定します。
 
 > 定時・定期のコーチングプッシュ（朝 / 夜 / 進捗 / 入浴リマインダー）は、GitHub Actions の `.github/workflows/coaching-cron.yml` が Deno Deploy の `/cron/*` エンドポイントを `CRON_SECRET` で認証して叩くことで実行されます。Deno の `Deno.cron()` ではなく GitHub Actions のスケジュールトリガーを採用しています。
 

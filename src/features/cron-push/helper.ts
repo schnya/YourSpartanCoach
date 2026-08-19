@@ -1,10 +1,14 @@
 import { tz } from "@date-fns/tz";
-import { messagingApi, type QuickReply } from "@line/bot-sdk";
 import { format, subDays } from "date-fns";
 import {
-	listGoogleTasks,
-	notifyTokenExpired,
+  listGoogleTasks,
+  notifyTokenExpired,
 } from "../../shared/integrations/google-tasks/googleTasks.js";
+import {
+  createTelegramClient,
+  type MessagingClient,
+} from "../../shared/integrations/telegram/telegramClient.js";
+export type { MessagingClient } from "../../shared/integrations/telegram/telegramClient.js";
 
 export const extractTaskIds = (
 	tasks: Array<{ id?: string | null }>,
@@ -49,71 +53,21 @@ export const computeDisciplineDelta = (
 
 // --- インターフェース ＆ DI クライアント ---
 
-export function buildQuickReply(label?: string): QuickReply | undefined {
-	if (!label) return undefined;
-	return {
-		items: [
-			{ type: "action", action: { type: "message", label, text: label } },
-		],
-	};
+export function buildQuickReply(label?: string): unknown | undefined {
+  if (!label) return undefined;
+  return {
+    keyboard: [[{ text: label }]],
+    one_time_keyboard: true,
+    resize_keyboard: true,
+  };
 }
 
-export interface PushClient {
-	pushMessage(
-		userId: string,
-		text: string,
-		options?: { quickReplyLabel?: string },
-	): Promise<void>;
-}
-
-// クロージャ + オブジェクトリテラルのファクトリ関
-export function createLinePushClient(channelAccessToken?: string): PushClient {
-	const client = channelAccessToken
-		? new messagingApi.MessagingApiClient({ channelAccessToken })
-		: null;
-
-	return {
-		async pushMessage(userId: string, text: string, options) {
-			if (!client || !userId || userId === "your_line_user_id_here") {
-				console.warn(
-					"[Push Message Mock]: LINE credentials missing or default. Outputting to console:",
-				);
-				console.log(`>>> USER[${userId}]: ${text}`);
-				return;
-			}
-
-			try {
-				await client.pushMessage({
-					to: userId,
-					messages: [
-						{
-							type: "text",
-							text,
-							quickReply: buildQuickReply(options?.quickReplyLabel),
-						},
-					],
-				});
-				console.log(`[Push Message Success]: Sent to user=${userId}`);
-			} catch (err: unknown) {
-				const errorDetail = err instanceof Error ? err.message : String(err);
-				console.error(
-					`[LINE Push Message Error Detail for user=${userId}]:`,
-					errorDetail,
-				);
-				throw err;
-			}
-		},
-	};
-}
-
-function _createInMemoryPushClient(
-	sentLog: { userId: string; text: string }[],
-): PushClient {
-	return {
-		async pushMessage(userId: string, text: string) {
-			sentLog.push({ userId, text });
-		},
-	};
+// クロージャ + オブジェクトリテラルのファクトリ関数。
+// LINE の PushClient 互換インターフェースを Telegram の MessagingClient に統一。
+export function createLinePushClient(
+  channelAccessToken?: string,
+): MessagingClient {
+  return createTelegramClient(channelAccessToken);
 }
 
 // --- 副作用を持つ I/O 関数 ---

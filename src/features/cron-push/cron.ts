@@ -21,11 +21,11 @@ import {
 	getBathReminderDay,
 	handleCronRoute,
 	isStale,
-	type PushClient,
+	type MessagingClient,
 	TZ_JST,
 } from "./helper.js";
 
-type Env = { Variables: { pushClient: PushClient } };
+type Env = { Variables: { pushClient: MessagingClient } };
 
 // @lat: [[routing#Cron Trigger Routing]]
 const cronApp = new Hono<Env>();
@@ -43,22 +43,27 @@ cronApp.use("*", async (c, next) => {
 	if (!c.var.pushClient) {
 		c.set(
 			"pushClient",
-			createLinePushClient(process.env.LINE_CHANNEL_ACCESS_TOKEN),
+			createLinePushClient(process.env.TELEGRAM_BOT_TOKEN),
 		);
 	}
 
 	await next();
 });
 
-const getUserId = (): string => process.env.LINE_USER_ID || "default_user";
+const getUserId = (): string => process.env.TELEGRAM_USER_ID || "default_user";
 export const shouldSendNoResponseNudge = (
 	lastUserReplyAt: string | undefined,
 	lastNudgeAt: string | undefined,
+	lastProgressPushAt?: string,
 	now = Date.now(),
 ): boolean => {
-	if (!lastUserReplyAt) return false;
+	// 返信歴がなくても、最後の接触（朝の push 等）から一定時間経過していれば
+	// nudge 対象とする。そうでないと「一度も返信していない IDLE ユーザー」へは
+	// 永遠に push されず、未確認状態が固定化される。
+	const lastContact = lastUserReplyAt || lastProgressPushAt;
+	if (!lastContact) return false;
 
-	const userHasBeenSilent = isStale(lastUserReplyAt, now);
+	const userHasBeenSilent = isStale(lastContact, now);
 	const nudgeIsStale = isStale(lastNudgeAt, now);
 
 	return userHasBeenSilent && nudgeIsStale;
@@ -98,7 +103,7 @@ cronApp.get("/morning", async (c) => {
 
 		// 内部ストレージ(Redis / MDファイル)に送信ログを記録
 		await recordSentMessage(userId, getToday(), "Morning", morningMsg);
-		await lineApi.pushMessage(userId, morningMsg);
+		await lineApi.sendMessage(userId, morningMsg);
 
 		return {
 			type: "morning",
@@ -123,6 +128,7 @@ cronApp.get("/progress", async (c) => {
 		const shouldNudge = shouldSendNoResponseNudge(
 			metadata?.lastUserReplyAt,
 			metadata?.lastNudgeAt,
+			metadata?.lastProgressPushAt,
 		);
 
 		// IDLEでも4時間以上無応答ならnudgeを許可する。
@@ -151,7 +157,7 @@ cronApp.get("/progress", async (c) => {
 			progressMsg = shouldNudge
 				? NO_RESPONSE_NUDGE
 				: buildProgressMessage(googleTasks);
-			await lineApi.pushMessage(userId, progressMsg);
+			await lineApi.sendMessage(userId, progressMsg);
 		}
 
 		const nextActive = shouldPush;
@@ -192,7 +198,7 @@ cronApp.get("/bath", async (c) => {
 		}
 		const message = BATH_REMINDER_MESSAGE;
 		// LINE Messaging API 経由でユーザーの端末へ実際にメッセージをプッシュ送信
-		await lineApi.pushMessage(userId, message, {
+		await lineApi.sendMessage(userId, message, {
 			quickReplyLabel: "入った",
 		});
 		return { type: "bath", pushed: true, message };
@@ -227,7 +233,7 @@ cronApp.get("/evening", async (c) => {
 
 		// 内部ストレージ(Redis / MDファイル)に送信ログを記録
 		await recordSentMessage(userId, getToday(), "Evening", eveningMsg);
-		await lineApi.pushMessage(userId, eveningMsg);
+		await lineApi.sendMessage(userId, eveningMsg);
 
 		return { type: "evening", message: eveningMsg, delta };
 	});

@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { getUserState, setUserState } from "../../shared/memory/fsmStore.js";
-import cronApp from "./cron.js";
+import cronApp, { shouldSendNoResponseNudge } from "./cron.js";
 
 interface DenoTestContext {
   step: (name: string, fn: () => void | Promise<void>) => Promise<boolean>;
@@ -15,12 +15,12 @@ declare const Deno: {
   };
 };
 
-//  env をモックして CRON_SECRET 認証と LINE push を通す
+//  env をモックして CRON_SECRET 認証と Telegram push を通す
 const OLD_ENV = Deno.env.toObject?.() ?? {};
 function withMockEnv() {
   Deno.env.set("CRON_SECRET", "test-secret");
-  Deno.env.set("LINE_CHANNEL_ACCESS_TOKEN", "");
-  Deno.env.set("LINE_USER_ID", "test_user_evening");
+  Deno.env.set("TELEGRAM_BOT_TOKEN", "");
+  Deno.env.set("TELEGRAM_USER_ID", "test_user_evening");
 }
 
 Deno.test("cron /evening preserves bathCompletedAt", async (t) => {
@@ -71,3 +71,58 @@ Deno.test("cron /evening preserves bathCompletedAt", async (t) => {
     );
   });
 });
+
+Deno.test("cron /progress nudges an unreplied IDLE user", async (t) => {
+  withMockEnv();
+  const userId = "test_user_nudge";
+
+  await t.step("shouldSendNoResponseNudge fires from lastProgressPushAt alone", () => {
+    const fourHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
+    // 一度も返信していないが、最後の接触(朝の push)から 4h 以上経過 → nudge 対象
+    assert.strictEqual(
+      shouldSendNoResponseNudge(undefined, undefined, fourHoursAgo),
+      true,
+      "unreplied IDLE user should still get nudged after the silence window",
+    );
+    // 直近 1h の接触なら nudge しない
+    const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+    assert.strictEqual(
+      shouldSendNoResponseNudge(undefined, undefined, oneHourAgo),
+      false,
+      "recent contact should suppress the nudge",
+    );
+  });
+
+  await t.step("/progress pushes NO_RESPONSE_NUDGE to a silent IDLE user", async () => {
+    // withMockEnv() は TELEGRAM_USER_ID を test_user_evening に固定するため、
+    // このテスト用に明示的に上書きする。
+    Deno.env.set("TELEGRAM_USER_ID", "test_user_nudge");
+    // 朝の push 時刻から 5h 経過、返信なし、nudge 未送信 → IDLE でも push されるはず
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
+    await setUserState("test_user_nudge", "IDLE", {
+      lastProgressPushAt: fiveHoursAgo,
+    });
+
+    const res = await cronApp.request("/progress", {
+      headers: { Authorization: "Bearer test-secret" },
+    });
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(
+      body.pushed,
+      true,
+      "silent IDLE user must still receive the no-response nudge",
+    );
+    assert.strictEqual(
+      body.shouldNudge,
+      true,
+      "shouldNudge must be true for a silent IDLE user past the silence window",
+    );
+    assert.strictEqual(
+      body.message,
+      "今日の一歩は、小さくて大丈夫です。できそうなことを1つだけ試してみましょう。",
+      "nudge message must be the NO_RESPONSE_NUDGE copy",
+    );
+  });
+});
+

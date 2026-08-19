@@ -61,7 +61,7 @@ app.get("/privacy", (c) => {
 });
 
 // @lat: [[routing#Routing System]]
-app.route("/webhook", webhookApp);
+app.route("/telegram/webhook", webhookApp);
 app.route("/cron", cronApp);
 app.route("/api", bounceRelayApp);
 

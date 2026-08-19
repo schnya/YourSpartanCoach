@@ -5,6 +5,6 @@
     "start": "deno serve -A --env-file=.env src/index.ts",
     "build": "deno check src/index.ts",
     "test": "deno test -A --unstable-kv",
-    "deploy": "deno run -A jsr:@deno/deployctl deploy --env-file=.env --prod"
+    "deploy": "deno run -A --unstable-kv jsr:@deno/deployctl deploy --env-file=.env --prod"
   }
 }

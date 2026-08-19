@@ -1,149 +1,142 @@
-import {
-	messagingApi,
-	validateSignature,
-	type WebhookEvent,
-	type WebhookRequestBody,
-} from "@line/bot-sdk";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { enqueueBounceMessage } from "../bounce-relay/bounceRelay.js";
 import { checkAndMarkEventProcessed } from "../../shared/memory/dailyLogStore.js";
+import {
+  createTelegramClient,
+  type MessagingClient,
+} from "../../shared/integrations/telegram/telegramClient.js";
 import { handleUserLogMessage } from "./messageHandlers.js";
 
-// @lat: [[routing#Webhook Endpoint]]
+// @lat: [[routing#Telegram Webhook Endpoint]]
 const webhookApp = new Hono();
-export const BOUNCE_CMD_RE = /^\/(dev|idea|log|notice)(\s|$)/i;
+export const BOUNCE_CMD_RE = /^(\/dev|\/idea|\/log|\/notice)(\s|$)/i;
 
-function getLineConfig(c: Context) {
-	const env = (c.env as Record<string, string>) || {};
-	const channelSecret = (
-		process.env.LINE_CHANNEL_SECRET ||
-		env.LINE_CHANNEL_SECRET ||
-		""
-	).trim();
-	const channelAccessToken = (
-		process.env.LINE_CHANNEL_ACCESS_TOKEN ||
-		env.LINE_CHANNEL_ACCESS_TOKEN ||
-		""
-	).trim();
-	return { channelSecret, channelAccessToken };
+function getTelegramConfig(c: Context) {
+  const env = (c.env as Record<string, string>) || {};
+  const botToken = (
+    process.env.TELEGRAM_BOT_TOKEN ||
+    env.TELEGRAM_BOT_TOKEN ||
+    ""
+  ).trim();
+  const webhookSecret = (
+    process.env.TELEGRAM_WEBHOOK_SECRET ||
+    env.TELEGRAM_WEBHOOK_SECRET ||
+    ""
+  ).trim();
+  return { botToken, webhookSecret };
 }
 
-function createLineClients(channelAccessToken: string) {
-	if (!channelAccessToken) return { client: null, blobClient: null };
-	return {
-		client: new messagingApi.MessagingApiClient({ channelAccessToken }),
-		blobClient: new messagingApi.MessagingApiBlobClient({
-			channelAccessToken,
-		}),
-	};
+function createTelegramClients(botToken: string): {
+  client: MessagingClient;
+} {
+  // 送信は MessagingClient 経由（cron と同じ）。webhook では reply も sendMessage で行う。
+  return { client: createTelegramClient(botToken) };
+}
+
+// Telegram Update の最小型（必要な部分のみ）。
+interface TelegramMessage {
+  message_id: number;
+  from?: { id: number; is_bot: boolean; username?: string };
+  chat: { id: number; type: string };
+  text?: string;
+  date: number;
+}
+interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
 }
 
 export async function processSingleEvent(
-	event: WebhookEvent,
-	clients: {
-		client: messagingApi.MessagingApiClient | null;
-		blobClient: messagingApi.MessagingApiBlobClient | null;
-	},
+  update: TelegramUpdate,
+  client: MessagingClient,
+  botToken: string,
 ) {
-	const eventId =
-		event.webhookEventId || `${event.timestamp}-${event.source?.userId}`;
-	const isDuplicate = await checkAndMarkEventProcessed(eventId);
-	if (isDuplicate) {
-		console.warn(
-			`[Webhook Warning]: Duplicate event detected and ignored: ${eventId}`,
-		);
-		return;
-	}
+  const message = update.message;
+  if (!message || !message.from) {
+    return;
+  }
 
-	const userId = event.source?.userId;
-	if (!userId) {
-		console.warn("[Webhook Warning]: Event source userId is missing.");
-		return;
-	}
+  const eventId = `${update.update_id}-${message.message_id}`;
+  const isDuplicate = await checkAndMarkEventProcessed(eventId);
+  if (isDuplicate) {
+    console.warn(
+      `[Webhook Warning]: Duplicate event detected and ignored: ${eventId}`,
+    );
+    return;
+  }
 
-	// ユーザーからのテキスト・画像投稿はすべて「記録」として扱う
-	if (event.type === "message") {
-		const replyToken = "replyToken" in event ? event.replyToken : undefined;
+  const userId = String(message.from.id);
+  const chatId = String(message.chat.id);
 
-		if (event.message.type === "text") {
-			const text = event.message.text.trim();
-			if (BOUNCE_CMD_RE.test(text)) {
-				const receivedAt = new Date(event.timestamp).toISOString();
-				const id = crypto.randomUUID();
-				await enqueueBounceMessage({
-					id,
-					userId,
-					text,
-					receivedAt,
-				});
-				return;
-			}
-		}
+  if (message.text && BOUNCE_CMD_RE.test(message.text.trim())) {
+    const receivedAt = new Date(message.date * 1000).toISOString();
+    const id = crypto.randomUUID();
+    await enqueueBounceMessage({
+      id,
+      userId,
+      text: message.text.trim(),
+      receivedAt,
+    });
+    return;
+  }
 
-		if (!replyToken || !clients.client) return;
-
-		if (event.message.type === "text") {
-			await handleUserLogMessage(
-				userId,
-				event.message.text.trim(),
-				replyToken,
-				clients.client,
-				false,
-			);
-		} else if (event.message.type === "image") {
-			await handleUserLogMessage(userId, "", replyToken, clients.client, true);
-		}
-		// その他のメッセージタイプ（スタンプ等）はログのみ
-	}
+  // その他のテキスト・画像（ここではテキストのみ扱う）投稿は「記録」として扱う。
+  if (message.text) {
+    await handleUserLogMessage(
+      userId,
+      chatId,
+      message.text.trim(),
+      client,
+      false,
+    );
+  }
+  // 画像等は現状ログのみ（recordSentMessage 相当の拡張は別タスク）。
 }
 
 webhookApp.post("/", async (c) => {
-	try {
-		const { channelSecret, channelAccessToken } = getLineConfig(c);
-		console.log(
-			`[Webhook Env Check]: Token Length = ${channelAccessToken.length}, Secret Length = ${channelSecret.length}`,
-		);
+  try {
+    const { botToken, webhookSecret } = getTelegramConfig(c);
+    console.log(
+      `[Webhook Env Check]: Token Length = ${botToken.length}, Secret Length = ${webhookSecret.length}`,
+    );
 
-		const signature = c.req.header("x-line-signature");
-		const bodyText = await c.req.text();
+    const secretHeader = c.req.header("x-telegram-bot-api-secret-token");
 
-		if (!signature) {
-			console.warn("[Webhook Warning]: Missing x-line-signature header");
-			return c.text("Missing signature", 401);
-		}
+    if (webhookSecret) {
+      if (secretHeader !== webhookSecret) {
+        console.error("[Webhook Error]: Invalid Telegram secret token");
+        return c.text("Invalid secret token", 401);
+      }
+    } else {
+      console.warn(
+        "[Webhook Warning]: TELEGRAM_WEBHOOK_SECRET is not set; skipping secret-token verification.",
+      );
+    }
 
-		if (channelSecret) {
-			const isValid = validateSignature(bodyText, channelSecret, signature);
-			if (!isValid) {
-				console.error("[Webhook Error]: Invalid signature verification failed");
-				return c.text("Invalid signature", 401);
-			}
-		}
+    let body: TelegramUpdate;
+    try {
+      body = await c.req.json();
+    } catch (err) {
+      console.error("[Webhook Error]: Failed to parse JSON body", err);
+      return c.text("Bad Request", 400);
+    }
 
-		let body: WebhookRequestBody;
-		try {
-			body = JSON.parse(bodyText);
-		} catch (err) {
-			console.error("[Webhook Error]: Failed to parse JSON body", err);
-			return c.text("Bad Request", 400);
-		}
+    if (!body || typeof body !== "object" || !("update_id" in body)) {
+      console.warn("[Webhook Warning]: Payload is not a Telegram Update");
+      return c.text("Bad Request", 400);
+    }
 
-		const clients = createLineClients(channelAccessToken);
+    const { client } = createTelegramClients(botToken);
+    await processSingleEvent(body, client, botToken);
 
-		if (body && Array.isArray(body.events)) {
-			for (const event of body.events) {
-				await processSingleEvent(event, clients);
-			}
-		}
-
-		return c.text("OK", 200);
-	} catch (globalErr: unknown) {
-		const errDetail =
-			globalErr instanceof Error ? globalErr.message : String(globalErr);
-		console.error("[Webhook Critical Error]:", errDetail);
-		return c.text("Internal Server Error", 500);
-	}
+    return c.text("OK", 200);
+  } catch (globalErr: unknown) {
+    const errDetail =
+      globalErr instanceof Error ? globalErr.message : String(globalErr);
+    console.error("[Webhook Critical Error]:", errDetail);
+    return c.text("Internal Server Error", 500);
+  }
 });
 
 export default webhookApp;
