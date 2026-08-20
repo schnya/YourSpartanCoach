@@ -18,7 +18,7 @@ import {
 	computeRecentReply,
 	createLinePushClient,
 	fetchGoogleTasksWithIds,
-	getBathReminderDay,
+	getBathDay,
 	handleCronRoute,
 	isStale,
 	type MessagingClient,
@@ -189,7 +189,7 @@ cronApp.get("/bath", async (c) => {
 	const result = await handleCronRoute("Bath", async () => {
 		const userId = getUserId();
 		const stateData = await getUserState(userId);
-		if (stateData.metadata?.bathCompletedAt === getBathReminderDay()) {
+		if (stateData.metadata?.bathCompletedAt === getBathDay()) {
 			return {
 				type: "bath",
 				pushed: false,

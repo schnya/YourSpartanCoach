@@ -5,7 +5,7 @@ import {
   recordSentMessage,
 } from "../../shared/memory/dailyLogStore.js";
 import { getUserState, setUserState } from "../../shared/memory/fsmStore.js";
-import { getBathReminderDay } from "../cron-push/helper.js";
+import { getBathDay } from "../cron-push/helper.js";
 
 async function replyText(
   client: MessagingClient,
@@ -38,7 +38,7 @@ export async function handleUserLogMessage(
     repliedToday: true,
     lastUserReplyAt: new Date().toISOString(),
     ...(rawText.trim() === "入った" && {
-      bathCompletedAt: getBathReminderDay(),
+      bathCompletedAt: getBathDay(),
     }),
   });
 

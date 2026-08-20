@@ -34,6 +34,13 @@ export const getBathReminderDay = (date = new Date()): string => {
 	return format(targetDate, "yyyy-MM-dd", { in: TZ_JST });
 };
 
+// 入浴完了の記録・判定用。03:00 境界を持たない「純粋な JST 日付」。
+// getBathReminderDay は JST<3:00 を「前日扱い」するため、深夜(03:00前)に
+// 「入った」を押すと 03:00 跨ぎで日付が変わり再送ガードが外れるバグがあった。
+// 記録と判定をこの境界なしの日付で統一し、押した当日は翌03:00問わず再送停止とする。
+export const getBathDay = (date = new Date()): string =>
+	format(date, "yyyy-MM-dd", { in: TZ_JST });
+
 export const NUDGE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 export const isStale = (isoDate: string | undefined, now: number): boolean => {
